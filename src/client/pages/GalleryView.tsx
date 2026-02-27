@@ -21,6 +21,7 @@ type FetchPhotosResult = {
   needsAuth: boolean;
   photos: Photo[];
   nextCursor: string | null;
+  total: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -46,17 +47,19 @@ function PhotoCard({ data: photo, width, index }: { data: Photo; width: number; 
 
 function MasonryGrid({
   photos,
+  total,
   onNearEnd,
   onPhotoClick,
   showInfo,
 }: {
   photos: Photo[];
+  total: number;
   onNearEnd: () => void;
   onPhotoClick: (p: Photo) => void;
   showInfo: boolean;
 }) {
   // Attach click handler via a static property to avoid recreating render fn
-  (PhotoCard as any)._ctx = { onClick: onPhotoClick, total: photos.length, showInfo };
+  (PhotoCard as any)._ctx = { onClick: onPhotoClick, total, showInfo };
 
   const maybeLoadMore = useInfiniteLoader(
     (_startIndex: number, _stopIndex: number, items: unknown[]) => {
@@ -83,6 +86,7 @@ export function GalleryView() {
   const navigate = useNavigate();
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [total, setTotal] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -103,11 +107,11 @@ export function GalleryView() {
       const res = await fetch(url, { credentials: "include" });
 
       if (res.status === 401 || res.status === 403) {
-        return { needsAuth: true, photos: [], nextCursor: null };
+        return { needsAuth: true, photos: [], nextCursor: null, total: 0 };
       }
 
-      const data = await res.json() as { photos: Photo[]; nextCursor: string | null };
-      return { needsAuth: false, photos: data.photos ?? [], nextCursor: data.nextCursor ?? null };
+      const data = await res.json() as { photos: Photo[]; nextCursor: string | null; total: number };
+      return { needsAuth: false, photos: data.photos ?? [], nextCursor: data.nextCursor ?? null, total: data.total ?? 0 };
     },
     [slug]
   );
@@ -147,6 +151,7 @@ export function GalleryView() {
         }
         setPhotos(data.photos);
         setNextCursor(data.nextCursor);
+        setTotal(data.total);
       } catch {
         setError("Failed to load photos");
       } finally {
@@ -169,6 +174,7 @@ export function GalleryView() {
       }
       setPhotos((prev) => [...prev, ...data.photos]);
       setNextCursor(data.nextCursor);
+      setTotal(data.total);
     } finally {
       setLoadingMore(false);
     }
@@ -286,7 +292,7 @@ export function GalleryView() {
           {error && <ErrorMessage message={error} onRetry={() => {
             setLoading(true);
             fetchPhotos()
-              .then((data) => { if (!data.needsAuth) { setPhotos(data.photos); setNextCursor(data.nextCursor); } })
+              .then((data) => { if (!data.needsAuth) { setPhotos(data.photos); setNextCursor(data.nextCursor); setTotal(data.total); } })
               .catch(() => setError("Failed to load photos"))
               .finally(() => setLoading(false));
           }} />}
@@ -294,7 +300,7 @@ export function GalleryView() {
           {/* Photo grid */}
           {!loading && (
             <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-              <MasonryGrid photos={photos} onNearEnd={loadMore} onPhotoClick={setLightbox} showInfo={showInfo} />
+              <MasonryGrid photos={photos} total={total} onNearEnd={loadMore} onPhotoClick={setLightbox} showInfo={showInfo} />
             </div>
           )}
 

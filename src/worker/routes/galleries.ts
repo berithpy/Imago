@@ -103,21 +103,26 @@ galleryRoutes.get("/:slug/photos", requireViewer as any, async (c) => {
     params = [gallery.id, limit];
   }
 
-  const { results } = await c.env.DB.prepare(query)
-    .bind(...params)
-    .all<{
-      id: string;
-      r2_key: string;
-      original_name: string;
-      size: number;
-      uploaded_at: number;
-      sort_order: number;
-    }>();
+  const [{ results }, countRow] = await Promise.all([
+    c.env.DB.prepare(query)
+      .bind(...params)
+      .all<{
+        id: string;
+        r2_key: string;
+        original_name: string;
+        size: number;
+        uploaded_at: number;
+        sort_order: number;
+      }>(),
+    c.env.DB.prepare("SELECT COUNT(*) AS total FROM photos WHERE gallery_id = ?")
+      .bind(gallery.id)
+      .first<{ total: number }>(),
+  ]);
 
   const nextCursor =
     results.length === limit
       ? String(results[results.length - 1].sort_order)
       : null;
 
-  return c.json({ photos: results, nextCursor });
+  return c.json({ photos: results, nextCursor, total: countRow?.total ?? 0 });
 });
