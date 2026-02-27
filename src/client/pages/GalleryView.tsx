@@ -17,6 +17,12 @@ type Photo = {
   sort_order: number;
 };
 
+type FetchPhotosResult = {
+  needsAuth: boolean;
+  photos: Photo[];
+  nextCursor: string | null;
+};
+
 // ---------------------------------------------------------------------------
 // Masonic grid — isolated component so masonic's internal hooks don't cause
 // the parent GalleryView to re-render on every scroll/resize event.
@@ -92,68 +98,77 @@ export function GalleryView() {
   const [showInfo, setShowInfo] = useState(true);
 
   const fetchPhotos = useCallback(
-    async (cursor?: string) => {
+    async (cursor?: string): Promise<FetchPhotosResult> => {
       const url = `/api/galleries/${slug}/photos${cursor ? `?cursor=${cursor}` : ""}`;
       const res = await fetch(url, { credentials: "include" });
 
       if (res.status === 401 || res.status === 403) {
-        navigate(`/gallery/${slug}/login`);
-        return;
+        return { needsAuth: true, photos: [], nextCursor: null };
       }
 
       const data = await res.json() as { photos: Photo[]; nextCursor: string | null };
-      return data;
+      return { needsAuth: false, photos: data.photos ?? [], nextCursor: data.nextCursor ?? null };
     },
-    [slug, navigate]
+    [slug]
   );
 
   useEffect(() => {
-    // Load gallery metadata — handle 410 (expired) and 404
-    fetch(`/api/galleries/${slug}`)
-      .then(async (r) => {
-        if (r.status === 410) { setExpired(true); setLoading(false); return null; }
-        return r.json() as Promise<{ gallery?: { name: string; is_public: number; banner_r2_key: string | null; event_date: number | null } }>;
-      })
-      .then(async (d) => {
-        if (!d) return;
+    let cancelled = false;
+
+    let isPublicGallery = false;
+
+    async function init() {
+      setLoading(true);
+
+      // 1. Load gallery metadata — handle 410 (expired) and 404
+      try {
+        const metaRes = await fetch(`/api/galleries/${slug}`);
+        if (cancelled) return;
+        if (metaRes.status === 410) { setExpired(true); setLoading(false); return; }
+        const d = await metaRes.json() as { gallery?: { name: string; is_public: number; banner_r2_key: string | null; event_date: number | null } };
+        if (cancelled) return;
+        isPublicGallery = !!d.gallery?.is_public;
         setGalleryName(d.gallery?.name ?? "");
-        setIsPublic(!!d.gallery?.is_public);
+        setIsPublic(isPublicGallery);
         setBannerKey(d.gallery?.banner_r2_key ?? null);
         setEventDate(d.gallery?.event_date ?? null);
-        // Auto-issue viewer JWT for public galleries so photo fetch works
-        if (d.gallery?.is_public) {
-          await fetch(`/api/viewer/gallery/${slug}/login`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({ password: "" }),
-          });
-        }
-      })
-      .catch(() => { });
+      } catch {
+        // ignore metadata errors — photo fetch will surface auth issues
+      }
 
-    // Load initial photos
-    setLoading(true);
-    fetchPhotos()
-      .then((data) => {
-        if (data) {
-          setPhotos(data.photos ?? []);
-          setNextCursor(data.nextCursor ?? null);
+      // 2. Fetch photos — middleware allows public galleries through without a token
+      try {
+        const data = await fetchPhotos();
+        if (cancelled) return;
+        if (data.needsAuth) {
+          // Only redirect to password login for private galleries
+          if (!isPublicGallery) navigate(`/gallery/${slug}/login`);
+          return;
         }
-      })
-      .catch(() => setError("Failed to load photos"))
-      .finally(() => setLoading(false));
-  }, [slug, fetchPhotos]);
+        setPhotos(data.photos);
+        setNextCursor(data.nextCursor);
+      } catch {
+        setError("Failed to load photos");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    init();
+    return () => { cancelled = true; };
+  }, [slug, navigate, fetchPhotos]);
 
   async function loadMore() {
     if (!nextCursor || loadingMore) return;
     setLoadingMore(true);
     try {
       const data = await fetchPhotos(nextCursor);
-      if (data) {
-        setPhotos((prev) => [...prev, ...(data.photos ?? [])]);
-        setNextCursor(data.nextCursor ?? null);
+      if (data.needsAuth) {
+        if (!isPublic) navigate(`/gallery/${slug}/login`);
+        return;
       }
+      setPhotos((prev) => [...prev, ...data.photos]);
+      setNextCursor(data.nextCursor);
     } finally {
       setLoadingMore(false);
     }
@@ -271,7 +286,7 @@ export function GalleryView() {
           {error && <ErrorMessage message={error} onRetry={() => {
             setLoading(true);
             fetchPhotos()
-              .then((data) => { if (data) { setPhotos(data.photos ?? []); setNextCursor(data.nextCursor ?? null); } })
+              .then((data) => { if (!data.needsAuth) { setPhotos(data.photos); setNextCursor(data.nextCursor); } })
               .catch(() => setError("Failed to load photos"))
               .finally(() => setLoading(false));
           }} />}

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { FieldError } from "@/client/components/ErrorMessage";
 import { cardStyle, inputStyle, accentButtonStyle } from "@/client/components/ui";
+import { PasswordField } from "@/client/components/PasswordField";
 
 type Props = {
   onCreated: () => void;
@@ -87,13 +88,14 @@ export function CreateGalleryForm({ onCreated, onCancel }: Props) {
         value={slug}
         onChange={(e) => setSlug(e.target.value)}
         required
-        pattern="[a-z0-9-]+"
+        pattern="[-a-z0-9]+"
         style={inputStyle}
       />
       <input
         placeholder="Description (optional)"
         value={description}
         onChange={(e) => setDescription(e.target.value)}
+        autoComplete="off"
         style={inputStyle}
       />
 
@@ -123,13 +125,12 @@ export function CreateGalleryForm({ onCreated, onCancel }: Props) {
 
       {/* Password — only shown for private galleries */}
       {!isPublic && (
-        <input
-          placeholder="Viewer password"
-          type="password"
+        <PasswordField
           value={password}
-          onChange={(e) => setPassword(e.target.value)}
+          onChange={setPassword}
+          placeholder="Viewer password"
           required
-          style={inputStyle}
+          showGenerate
         />
       )}
 

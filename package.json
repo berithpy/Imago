@@ -2,6 +2,7 @@
 	"name": "imago",
 	"type": "module",
 	"scripts": {
+		"setup:dev": "node scripts/generate-dev-vars.js",
 		"dev": "vite dev",
 		"build": "vite build",
 		"deploy": "vite build && wrangler deploy --minify",

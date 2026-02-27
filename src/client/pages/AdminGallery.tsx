@@ -6,6 +6,7 @@ import { EmptyState } from "@/client/components/EmptyState";
 import { PhotoThumbnail } from "@/client/components/PhotoThumbnail";
 import { cardSmallStyle, accentButtonStyle, iconButtonStyle, ghostButtonStyle, dangerButtonStyle, formatSize } from "@/client/components/ui";
 import { exportGallery } from "@/client/lib/exportGallery";
+import { PasswordField } from "@/client/components/PasswordField";
 
 const authClient = createAuthClient({ baseURL: `${window.location.origin}/api/auth` });
 
@@ -178,8 +179,7 @@ export function AdminGallery() {
     setGallery((g) => g ? { ...g, is_public: next ? 1 : 0 } : g);
   }
 
-  async function handleResetPassword(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleResetPassword() {
     if (!newPassword) return;
     setResettingPassword(true);
     try {
@@ -437,34 +437,15 @@ export function AdminGallery() {
           {/* Password reset — separate submit so it doesn't save other settings */}
           <div style={{ marginTop: 8, paddingTop: 16, borderTop: "1px solid var(--color-border)" }}>
             <label style={{ fontSize: "0.8rem", color: "var(--color-text-muted)", display: "block", marginBottom: 6 }}>Reset gallery password</label>
-            <div style={{ display: "flex", gap: 8 }}>
-              <input
-                type="text"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="New password"
-                style={{ flex: 1, padding: "8px 12px", background: "var(--color-bg)", border: "1px solid var(--color-border)", borderRadius: "var(--radius)", color: "var(--color-text)", fontSize: "0.9rem", outline: "none" }}
-              />
-              <button
-                type="button"
-                onClick={handleResetPassword}
-                disabled={resettingPassword || !newPassword}
-                style={{
-                  padding: "8px 16px",
-                  background: passwordResetDone ? "var(--color-accent)" : "none",
-                  border: `1px solid ${passwordResetDone ? "var(--color-accent)" : "var(--color-border)"}`,
-                  borderRadius: "var(--radius)",
-                  color: passwordResetDone ? "#0f0f0f" : "var(--color-text-muted)",
-                  fontWeight: passwordResetDone ? 600 : 400,
-                  fontSize: "0.9rem",
-                  cursor: resettingPassword || !newPassword ? "not-allowed" : "pointer",
-                  whiteSpace: "nowrap",
-                  transition: "background 0.2s, color 0.2s",
-                }}
-              >
-                {passwordResetDone ? "✓ Updated!" : resettingPassword ? "Saving…" : "Set password"}
-              </button>
-            </div>
+            <PasswordField
+              value={newPassword}
+              onChange={setNewPassword}
+              placeholder="New password"
+              onAction={handleResetPassword}
+              actionLoading={resettingPassword}
+              actionDone={passwordResetDone}
+              showGenerate={true}
+            />
           </div>
         </form>
       )}

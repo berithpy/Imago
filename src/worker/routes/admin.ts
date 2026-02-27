@@ -66,8 +66,11 @@ adminRoutes.post("/galleries", async (c) => {
     expires_at?: number | null;
   }>();
 
-  if (!name || !slug || !password) {
-    return c.json({ error: "name, slug, and password are required" }, 400);
+  if (!name || !slug || (!is_public && !password)) {
+    return c.json(
+      { error: "name and slug are required; password is required for private galleries" },
+      400
+    );
   }
 
   // Validate slug format

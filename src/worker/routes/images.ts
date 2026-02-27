@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { Bindings } from "../index";
-import { requireViewer } from "../middleware/auth";
+import { requireViewerOrAdmin } from "../middleware/auth";
 
 export const imageRoutes = new Hono<{ Bindings: Bindings }>();
 
@@ -11,7 +11,7 @@ const THUMBNAIL_QUALITY = 85;
 // Protected: serve an image from R2, transformed via Cloudflare Images
 // Query params: ?variant=thumb (default) | full
 // ------------------------------------------------------------------
-imageRoutes.get("/:key{.+}", requireViewer as any, async (c) => {
+imageRoutes.get("/:key{.+}", requireViewerOrAdmin as any, async (c) => {
   const key = c.req.param("key");
   const variant = c.req.query("variant") ?? "thumb";
 

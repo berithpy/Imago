@@ -15,14 +15,19 @@ export function GalleryLogin() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [galleryId, setGalleryId] = useState<string | null>(null);
   const [bypassing, setBypassing] = useState(false);
+  const [checking, setChecking] = useState(true);
 
   // Check if the visitor is a logged-in admin, and grab the gallery id
   useEffect(() => {
-    // Fetch gallery id (needed for bypass route)
+    // Fetch gallery metadata to get the gallery id
     fetch(`/api/galleries/${slug}`)
-      .then((r) => r.ok ? r.json() as Promise<{ gallery?: { id: string } }> : null)
-      .then((d) => { if (d?.gallery?.id) setGalleryId(d.gallery.id); })
-      .catch(() => { });
+      .then((r) => r.ok ? r.json() as Promise<{ gallery?: { id: string; is_public: number } }> : null)
+      .then((d) => {
+        if (d?.gallery?.id) setGalleryId(d.gallery.id);
+        // If the gallery is public, GalleryView handles auth — nothing to do here
+        setChecking(false);
+      })
+      .catch(() => { setChecking(false); });
 
     authClient.getSession({ fetchOptions: { credentials: "include" } })
       .then(({ data }) => { if (data?.session) setIsAdmin(true); })
@@ -74,6 +79,8 @@ export function GalleryLogin() {
       setLoading(false);
     }
   }
+
+  if (checking) return null;
 
   return (
     <div

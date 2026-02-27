@@ -12,9 +12,8 @@ export const viewerRoutes = new Hono<{ Bindings: Bindings }>();
 // ------------------------------------------------------------------
 viewerRoutes.post("/gallery/:slug/login", async (c) => {
   const { slug } = c.req.param();
-  const { password } = await c.req.json<{ password: string }>();
-
-  if (!password) return c.json({ error: "Password required" }, 400);
+  const body = await c.req.json<{ password?: string }>();
+  const password = body.password ?? "";
 
   const gallery = await c.env.DB.prepare(
     "SELECT id, password_hash, is_public FROM galleries WHERE slug = ? AND deleted_at IS NULL"
@@ -24,8 +23,9 @@ viewerRoutes.post("/gallery/:slug/login", async (c) => {
 
   if (!gallery) return c.json({ error: "Gallery not found" }, 404);
 
-  // Public galleries: skip password check
+  // Public galleries: skip password check entirely
   if (!gallery.is_public) {
+    if (!password) return c.json({ error: "Password required" }, 400);
     const valid = await pbkdf2Verify(password, gallery.password_hash);
     if (!valid) return c.json({ error: "Invalid password" }, 401);
   }
