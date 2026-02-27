@@ -1,0 +1,36 @@
+{
+	"name": "imago",
+	"type": "module",
+	"scripts": {
+		"dev": "vite dev",
+		"build": "vite build",
+		"deploy": "vite build && wrangler deploy --minify",
+		"worker:dev": "wrangler dev",
+		"cf-typegen": "wrangler types --env-interface CloudflareBindings",
+		"db:migrate:local": "wrangler d1 migrations apply imago-db --local",
+		"db:migrate:remote": "wrangler d1 migrations apply imago-db --remote",
+		"db:create": "wrangler d1 create imago-db"
+	},
+	"dependencies": {
+		"@hono/node-server": "^1.19.9",
+		"@vitejs/plugin-react": "^5.1.4",
+		"better-auth": "^1.4.19",
+		"drizzle-orm": "^0.45.1",
+		"fflate": "^0.8.2",
+		"hono": "^4.12.2",
+		"kysely": "^0.28.11",
+		"kysely-d1": "^0.4.0",
+		"masonic": "^4.1.0",
+		"react": "^19.2.4",
+		"react-dom": "^19.2.4",
+		"react-router-dom": "^7.13.1",
+		"vite": "^7.3.1"
+	},
+	"devDependencies": {
+		"@types/node": "^25.3.1",
+		"@types/react": "^19.2.14",
+		"@types/react-dom": "^19.2.3",
+		"typescript": "^5.9.3",
+		"wrangler": "^4.68.1"
+	}
+}

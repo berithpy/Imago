@@ -1,0 +1,7 @@
+# Local development secrets — NEVER commit this file
+# Copy this to .dev.vars and fill in your values
+
+JWT_SECRET=change-me-to-a-long-random-string
+BETTER_AUTH_SECRET=change-me-to-another-long-random-string
+ADMIN_RESET_SECRET=change-me-to-a-secret-reset-token
+RESEND_API_KEY=re_placeholder
