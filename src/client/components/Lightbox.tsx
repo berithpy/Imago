@@ -28,58 +28,74 @@ export function Lightbox({ r2Key, alt, onClose, filename }: LightboxProps) {
         inset: 0,
         background: "rgba(0,0,0,0.92)",
         display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
+        flexDirection: "column",
         zIndex: 1000,
-        padding: 24,
       }}
     >
-      <img
-        src={`/api/images/${r2Key}?variant=full`}
-        alt={alt}
-        style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
+      {/* Toolbar */}
+      <div
         onClick={(e) => e.stopPropagation()}
-      />
-      {/* Close button — top right */}
-      <button
-        onClick={onClose}
-        aria-label="Close"
         style={{
-          position: "fixed",
-          top: 20,
-          right: 24,
-          background: "none",
-          border: "none",
-          color: "white",
-          fontSize: "2rem",
-          lineHeight: 1,
-          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "10px 16px",
+          borderBottom: "1px solid rgba(255,255,255,0.12)",
+          background: "rgba(0,0,0,0.6)",
+          backdropFilter: "blur(6px)",
+          flexShrink: 0,
         }}
       >
-        ×
-      </button>
-      {/* Download button — bottom center */}
-      <button
-        onClick={handleDownload}
-        aria-label="Download photo"
+        <button
+          onClick={handleDownload}
+          aria-label="Download photo"
+          style={{
+            background: "rgba(255,255,255,0.1)",
+            border: "1px solid rgba(255,255,255,0.3)",
+            borderRadius: 6,
+            color: "white",
+            fontFamily: "'Courier New', Courier, monospace",
+            fontSize: "0.85rem",
+            padding: "6px 18px",
+            cursor: "pointer",
+          }}
+        >
+          ⬇ Download
+        </button>
+        <button
+          onClick={onClose}
+          aria-label="Close"
+          style={{
+            background: "none",
+            border: "none",
+            color: "white",
+            fontSize: "1.5rem",
+            lineHeight: 1,
+            cursor: "pointer",
+            padding: "4px 8px",
+          }}
+        >
+          ✕
+        </button>
+      </div>
+      {/* Image area */}
+      <div
         style={{
-          position: "fixed",
-          bottom: 24,
-          left: "50%",
-          transform: "translateX(-50%)",
-          background: "rgba(255,255,255,0.1)",
-          border: "1px solid rgba(255,255,255,0.3)",
-          borderRadius: 6,
-          color: "white",
-          fontFamily: "'Courier New', Courier, monospace",
-          fontSize: "0.85rem",
-          padding: "6px 18px",
-          cursor: "pointer",
-          backdropFilter: "blur(4px)",
+          flex: 1,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 24,
+          overflow: "hidden",
         }}
       >
-        ⬇ Download
-      </button>
+        <img
+          src={`/api/images/${r2Key}?variant=full`}
+          alt={alt}
+          style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
+          onClick={(e) => e.stopPropagation()}
+        />
+      </div>
     </div>
   );
 }
