@@ -49,9 +49,33 @@ adminRoutes.post("/setup", async (c) => {
 // Galleries CRUD
 // ------------------------------------------------------------------
 adminRoutes.get("/galleries", async (c) => {
-  const { results } = await c.env.DB.prepare(
-    "SELECT id, name, slug, description, is_public, banner_photo_id, event_date, expires_at, deleted_at, created_at FROM galleries ORDER BY created_at DESC"
-  ).all();
+  const q = (c.req.query("q") ?? "").trim();
+  const sort = c.req.query("sort") ?? "created_desc";
+
+  const SORT_MAP: Record<string, string> = {
+    created_desc: "created_at DESC",
+    created_asc: "created_at ASC",
+    name_asc: "name ASC",
+    name_desc: "name DESC",
+    event_desc: "COALESCE(event_date, 0) DESC",
+    event_asc: "COALESCE(event_date, 0) ASC",
+  };
+  const orderBy = SORT_MAP[sort] ?? "created_at DESC";
+
+  const SELECT = "SELECT id, name, slug, description, is_public, banner_photo_id, event_date, expires_at, deleted_at, created_at FROM galleries";
+
+  let results;
+  if (q) {
+    const like = `%${q}%`;
+    ({ results } = await c.env.DB.prepare(
+      `${SELECT} WHERE (name LIKE ? OR slug LIKE ? OR description LIKE ?) ORDER BY ${orderBy}`
+    ).bind(like, like, like).all());
+  } else {
+    ({ results } = await c.env.DB.prepare(
+      `${SELECT} ORDER BY ${orderBy}`
+    ).all());
+  }
+
   return c.json({ galleries: results });
 });
 
