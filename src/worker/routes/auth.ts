@@ -4,6 +4,7 @@ import { sign } from "hono/jwt";
 import { Bindings } from "../index";
 import { pbkdf2Verify } from "../lib/crypto";
 import { auth } from "../lib/auth";
+import { logAdminEvent } from "../lib/adminLog";
 
 export const viewerRoutes = new Hono<{ Bindings: Bindings }>();
 
@@ -65,6 +66,20 @@ viewerRoutes.post("/admin/reset", async (c) => {
   }
   deleteCookie(c, "better-auth.session_token", { path: "/" });
   return c.json({ ok: true, message: "Admin session cleared" });
+});
+
+// ------------------------------------------------------------------
+// Admin: recover — wipes the admin user so /api/admin/setup works again
+// Cascades to session and account tables automatically.
+// ------------------------------------------------------------------
+viewerRoutes.post("/admin/recover", async (c) => {
+  const { secret } = await c.req.json<{ secret: string }>();
+  if (!secret || secret !== c.env.ADMIN_RESET_SECRET) {
+    return c.json({ error: "Invalid reset secret" }, 403);
+  }
+  await c.env.DB.prepare("DELETE FROM user").run();
+  await logAdminEvent(c.env.DB, "ADMIN_RECOVER");
+  return c.json({ ok: true });
 });
 
 // Better-auth handler is mounted directly on the main app in index.ts

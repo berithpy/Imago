@@ -4,12 +4,16 @@ import { requireViewerOrAdmin } from "../middleware/auth";
 
 export const imageRoutes = new Hono<{ Bindings: Bindings }>();
 
-const THUMBNAIL_WIDTH = 800;
-const THUMBNAIL_QUALITY = 85;
+// Dimensions and quality per variant
+const VARIANT_CONFIG: Record<string, { width: number; quality: number }> = {
+  thumb: { width: 800, quality: 85 },
+  banner: { width: 2400, quality: 90 },
+  preview: { width: 2000, quality: 90 },
+};
 
 // ------------------------------------------------------------------
 // Protected: serve an image from R2, transformed via Cloudflare Images
-// Query params: ?variant=thumb (default) | full
+// Query params: ?variant=thumb (default) | banner | preview | full
 // ------------------------------------------------------------------
 imageRoutes.get("/:key{.+}", requireViewerOrAdmin as any, async (c) => {
   const key = c.req.param("key");
@@ -18,9 +22,7 @@ imageRoutes.get("/:key{.+}", requireViewerOrAdmin as any, async (c) => {
   const object = await c.env.IMAGES_BUCKET.get(key);
   if (!object) return c.notFound();
 
-  const isFull = variant === "full";
-
-  if (isFull) {
+  if (variant === "full") {
     // Serve original, streaming directly
     const headers = new Headers();
     object.writeHttpMetadata(headers);
@@ -29,12 +31,14 @@ imageRoutes.get("/:key{.+}", requireViewerOrAdmin as any, async (c) => {
     return new Response(object.body, { headers });
   }
 
-  // Serve thumbnail via Cloudflare Images binding
+  const config = VARIANT_CONFIG[variant] ?? VARIANT_CONFIG.thumb;
+
+  // Serve transformed image via Cloudflare Images binding
   try {
     const result = await c.env.IMAGES
       .input(object.body)
-      .transform({ width: THUMBNAIL_WIDTH })
-      .output({ format: "image/webp", quality: THUMBNAIL_QUALITY });
+      .transform({ width: config.width })
+      .output({ format: "image/webp", quality: config.quality });
     const transformed = result.response();
 
     const headers = new Headers(transformed.headers);

@@ -90,7 +90,7 @@ export function Lightbox({ r2Key, alt, onClose, filename }: LightboxProps) {
         }}
       >
         <img
-          src={`/api/images/${r2Key}?variant=full`}
+          src={`/api/images/${r2Key}?variant=preview`}
           alt={alt}
           style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
           onClick={(e) => e.stopPropagation()}

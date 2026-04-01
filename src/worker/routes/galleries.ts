@@ -89,23 +89,14 @@ galleryRoutes.get("/:slug/photos", requireViewer as any, async (c) => {
 
   if (!gallery) return c.json({ error: "Gallery not found" }, 404);
 
-  // Build paginated query
-  let query: string;
-  let params: (string | number)[];
-
-  if (cursor) {
-    query =
-      "SELECT id, r2_key, original_name, size, uploaded_at, sort_order FROM photos WHERE gallery_id = ? AND sort_order > ? ORDER BY sort_order ASC, uploaded_at ASC LIMIT ?";
-    params = [gallery.id, Number(cursor), limit];
-  } else {
-    query =
-      "SELECT id, r2_key, original_name, size, uploaded_at, sort_order FROM photos WHERE gallery_id = ? ORDER BY sort_order ASC, uploaded_at ASC LIMIT ?";
-    params = [gallery.id, limit];
-  }
+  // Build paginated query using OFFSET to handle duplicate sort_order values (batch uploads)
+  const offset = cursor ? Number(cursor) : 0;
 
   const [{ results }, countRow] = await Promise.all([
-    c.env.DB.prepare(query)
-      .bind(...params)
+    c.env.DB.prepare(
+      "SELECT id, r2_key, original_name, size, uploaded_at, sort_order FROM photos WHERE gallery_id = ? ORDER BY sort_order ASC, id ASC LIMIT ? OFFSET ?"
+    )
+      .bind(gallery.id, limit, offset)
       .all<{
         id: string;
         r2_key: string;
@@ -120,8 +111,8 @@ galleryRoutes.get("/:slug/photos", requireViewer as any, async (c) => {
   ]);
 
   const nextCursor =
-    results.length === limit
-      ? String(results[results.length - 1].sort_order)
+    offset + results.length < (countRow?.total ?? 0)
+      ? String(offset + results.length)
       : null;
 
   return c.json({ photos: results, nextCursor, total: countRow?.total ?? 0 });

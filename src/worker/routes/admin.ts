@@ -4,6 +4,7 @@ import { sign } from "hono/jwt";
 import { Bindings } from "../index";
 import { pbkdf2Hash } from "../lib/crypto";
 import { auth } from "../lib/auth";
+import { logAdminEvent } from "../lib/adminLog";
 
 export const adminRoutes = new Hono<{ Bindings: Bindings }>();
 
@@ -41,6 +42,8 @@ adminRoutes.post("/setup", async (c) => {
   const result = await auth(c.env, origin).api.signUpEmail({
     body: { email, password, name },
   });
+
+  await logAdminEvent(c.env.DB, "ADMIN_SETUP");
 
   return c.json({ ok: true, user: result });
 });
@@ -122,6 +125,8 @@ adminRoutes.post("/galleries", async (c) => {
   )
     .bind(id, name, slug, passwordHash, description ?? null, is_public ? 1 : 0, event_date ?? null, expires_at ?? null, now)
     .run();
+
+  await logAdminEvent(c.env.DB, "GALLERY_CREATED", slug);
 
   return c.json({ ok: true, gallery: { id, name, slug, description, is_public: is_public ? 1 : 0, event_date: event_date ?? null, expires_at: expires_at ?? null, created_at: now } }, 201);
 });
@@ -384,4 +389,14 @@ adminRoutes.post("/galleries/:id/viewer-bypass", async (c) => {
   });
 
   return c.json({ ok: true, slug: gallery.slug });
+});
+
+// ------------------------------------------------------------------
+// Admin log — read-only audit trail
+// ------------------------------------------------------------------
+adminRoutes.get("/log", async (c) => {
+  const { results } = await c.env.DB.prepare(
+    "SELECT id, event, detail, created_at FROM admin_log ORDER BY created_at DESC LIMIT 200"
+  ).all<{ id: number; event: string; detail: string | null; created_at: number }>();
+  return c.json({ log: results });
 });

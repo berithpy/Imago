@@ -1,7 +1,7 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Masonry, useInfiniteLoader } from "masonic";
-import { SpinnerOverlay } from "@/client/components/Spinner";
+import { Masonry } from "masonic";
+import { Spinner, SpinnerOverlay } from "@/client/components/Spinner";
 import { ErrorMessage } from "@/client/components/ErrorMessage";
 import { EmptyState } from "@/client/components/EmptyState";
 import { PhotoThumbnail } from "@/client/components/PhotoThumbnail";
@@ -48,25 +48,16 @@ function PhotoCard({ data: photo, width, index }: { data: Photo; width: number; 
 function MasonryGrid({
   photos,
   total,
-  onNearEnd,
   onPhotoClick,
   showInfo,
 }: {
   photos: Photo[];
   total: number;
-  onNearEnd: () => void;
   onPhotoClick: (p: Photo) => void;
   showInfo: boolean;
 }) {
   // Attach click handler via a static property to avoid recreating render fn
   (PhotoCard as any)._ctx = { onClick: onPhotoClick, total, showInfo };
-
-  const maybeLoadMore = useInfiniteLoader(
-    (_startIndex: number, _stopIndex: number, items: unknown[]) => {
-      if (items.length > 0) onNearEnd();
-    },
-    { threshold: 6, minimumBatchSize: 1 }
-  );
 
   return (
     <Masonry
@@ -76,7 +67,6 @@ function MasonryGrid({
       columnGutter={12}
       itemKey={(data: Photo) => `${data.id}-${showInfo}`}
       itemHeightEstimate={320}
-      onRender={maybeLoadMore}
     />
   );
 }
@@ -100,6 +90,9 @@ export function GalleryView() {
   const [exportProgress, setExportProgress] = useState<string | null>(null);
   const [exportDone, setExportDone] = useState(false);
   const [showInfo, setShowInfo] = useState(true);
+
+  const loadingMoreRef = useRef(false);
+  const observerRef = useRef<IntersectionObserver | null>(null);
 
   const fetchPhotos = useCallback(
     async (cursor?: string): Promise<FetchPhotosResult> => {
@@ -163,8 +156,9 @@ export function GalleryView() {
     return () => { cancelled = true; };
   }, [slug, navigate, fetchPhotos]);
 
-  async function loadMore() {
-    if (!nextCursor || loadingMore) return;
+  const loadMore = useCallback(async () => {
+    if (!nextCursor || loadingMoreRef.current) return;
+    loadingMoreRef.current = true;
     setLoadingMore(true);
     try {
       const data = await fetchPhotos(nextCursor);
@@ -176,9 +170,24 @@ export function GalleryView() {
       setNextCursor(data.nextCursor);
       setTotal(data.total);
     } finally {
+      loadingMoreRef.current = false;
       setLoadingMore(false);
     }
-  }
+  }, [nextCursor, slug, isPublic, navigate, fetchPhotos]);
+
+  const setSentinel = useCallback((node: HTMLDivElement | null) => {
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+      observerRef.current = null;
+    }
+    if (node) {
+      observerRef.current = new IntersectionObserver(
+        (entries) => { if (entries[0].isIntersecting) loadMore(); },
+        { threshold: 0.1 }
+      );
+      observerRef.current.observe(node);
+    }
+  }, [loadMore]);
 
   async function handleExport() {
     setExporting(true);
@@ -217,7 +226,7 @@ export function GalleryView() {
           {bannerKey && (
             <div style={{ width: "100%", maxHeight: 340, overflow: "hidden", marginBottom: 0 }}>
               <img
-                src={`/api/images/${bannerKey}?variant=thumb`}
+                src={`/api/images/${bannerKey}?variant=banner`}
                 alt="Gallery banner"
                 style={{ width: "100%", height: 340, objectFit: "cover", display: "block" }}
               />
@@ -300,7 +309,13 @@ export function GalleryView() {
           {/* Photo grid */}
           {!loading && (
             <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-              <MasonryGrid photos={photos} total={total} onNearEnd={loadMore} onPhotoClick={setLightbox} showInfo={showInfo} />
+              <MasonryGrid photos={photos} total={total} onPhotoClick={setLightbox} showInfo={showInfo} />
+              <div ref={setSentinel} style={{ height: 1 }} />
+              {loadingMore && (
+                <div style={{ display: "flex", justifyContent: "center", padding: "16px 0" }}>
+                  <Spinner />
+                </div>
+              )}
             </div>
           )}
 
