@@ -1,118 +1,96 @@
 # Imago  Project Plan
-## Stage 9  Resend + Email-based Auth
+## Stage 9  Login Page Audit & Polish
 
 ### Goal
-Replace the password-only admin login with OTP-over-email, wire up Resend to actually deliver all the transactional emails the app already has stubs for, add a per-gallery email whitelist so private galleries can be shared with specific people without a shared password, and add an admin user invitation flow.
+All authentication flows are now functional, but the login pages were built incrementally and have not been reviewed as a cohesive set. This stage audits every login surface, maps all auth flows end-to-end, identifies UX/visual gaps, and produces consistent, polished pages across the app.
 
 ---
 
-### Sub-task 9a — Resend helper + email templates
+### 9a — Flow Inventory
 
-**File to create:** `src/worker/lib/email.ts`
+Map every login surface in the app and document what triggers it, what it does, and where it lands afterward. No assumptions — walk each flow manually in the browser.
 
-A thin typed wrapper around the Resend REST API (`fetch`-based, works in CF Workers — no Node SDK needed). A single `sendEmail(apiKey, { to, subject, html })` function used by all callers.
+**Surfaces to document:**
 
-HTML templates (inline in the same file or as small template functions) for each transactional email:
-- **Subscription confirmation** — "Click to confirm your subscription to [gallery name]" with a `/api/subscribe/confirm?token=` link
-- **Unsubscribe confirmation** — "You have been unsubscribed" (plain, no link needed)
-- **Gallery expiry warning** — "This gallery will be removed on [date]. Download your photos before then." with a link to the gallery and a download-all button
-- **New photos notification** — "[N] new photos were added to [gallery name]" with a thumbnail grid teaser (or just the gallery link)
-- **Admin OTP code** — "Your sign-in code is [code]. It expires in 10 minutes."
-- **Invited user onboarding** — "You've been invited to [app name]. Click to set up your account."
+| Page | File | Trigger | Auth mechanism | Success destination |
+|---|---|---|---|---|
+| Admin setup | `AdminSetup.tsx` | First visit, no admin exists | Email + password (register) | Admin dashboard |
+| Admin login | `AdminLogin.tsx` | `/admin/login` | Email → OTP code (better-auth emailOTP) | Admin dashboard |
+| Gallery login — email | `GalleryLogin.tsx` | Private gallery, no cookie | Email → magic link (better-auth magicLink) | Gallery view |
+| Gallery login — password | `GalleryLogin.tsx` | "Use a password instead" toggle | Password → viewer JWT cookie | Gallery view |
+| Magic link callback | handled by better-auth | Click link in email | Token exchange → session cookie | `/gallery/:slug` redirect |
 
-**Notes:**
-- All templates use plain HTML strings (no JSX/React Email for now — avoids a build step in the worker).
-- `RESEND_API_KEY` is already in `Bindings`. The helper should gracefully no-op (log a warning) if the key is a placeholder so local dev doesn't crash.
-
----
-
-### Sub-task 9b — Wire up subscribe emails
-
-**File:** `src/worker/routes/subscribe.ts`
-
-Replace the existing `// TODO` stub with real `sendEmail` calls:
-- `POST /api/subscribe/galleries/:slug` → send subscription confirmation email
-- `GET /api/subscribe/confirm` → send "you're now subscribed" confirmation email after verifying
-- `GET /api/subscribe/unsubscribe` → send unsubscribe confirmation email
+For each flow, note:
+- Which API endpoints are called and in what order
+- What cookies/tokens are set and their lifetimes
+- What happens on error (wrong password, expired link, email not on whitelist, etc.)
+- Whether the redirect after auth lands in the right place
 
 ---
 
-### Sub-task 9c — better-auth OTP login
+### 9b — Visual & UX Review
 
-**Files:** `src/worker/lib/auth.ts`, `src/client/pages/AdminLogin.tsx`
+Walk every login page and evaluate against these criteria:
 
-Add better-auth's `emailOTP` plugin to replace (or augment) the `emailAndPassword` flow:
-- Configure `emailOTP({ async sendVerificationOTP({ email, otp }) { ... } })` using the Resend helper
-- The plugin handles: generate a 6-digit code, store it in the `verification` table with a 10-minute TTL, verify on sign-in
-- **Login UI change:** two-step form — step 1: enter email → step 2: enter OTP code. The current `emailAndPassword` plugin can be kept enabled in parallel so the password-based login remains as a fallback until OTP is confirmed working.
+- **Consistency** — do they share the same layout container, font sizes, button styles, and spacing?
+- **Branding** — does the app name/logo appear? Is the page identifiable as "Imago"?
+- **State feedback** — loading states (spinner/disabled button while request in flight), error messages, success/confirmation states
+- **Mobile** — does the form look reasonable on a narrow viewport?
+- **Empty/edge states** — what does the page look like before the user has typed anything? After a failed attempt?
 
-**Schema:** No migration needed — better-auth reuses the existing `verification` table.
-
----
-
-### Sub-task 9d — Admin setup: register master email
-
-**File:** `src/worker/routes/admin.ts` (`POST /api/admin/setup`)
-
-The setup endpoint already creates the first user. Small additions:
-- Accept a `recoveryEmail` field (can be the same as `email` or a separate address).
-- Store it in a one-row `app_config` table (`key TEXT PRIMARY KEY, value TEXT`) — migration `0001_app_config.sql`.
-- The existing `ADMIN_RESET_SECRET` flow remains. Add a new `POST /api/viewer/admin/recover-by-email` route that sends a password-reset / OTP email to the stored recovery email, so recovery doesn't require accessing Cloudflare dashboard.
+Document findings per page as a short checklist of what needs fixing.
 
 ---
 
-### Sub-task 9e — Per-gallery email whitelist
+### 9c — Rework Login Pages
 
-**New table:** `gallery_allowed_emails (id, gallery_id FK, email, added_at)` — migration `0001_app_config.sql` (same migration as above).
+Implement the fixes identified in 9b. Treat all three pages as a set so they feel like a cohesive product.
 
-**API routes (admin-only):**
-- `GET /api/admin/galleries/:id/allowed-emails` — list allowed emails
-- `POST /api/admin/galleries/:id/allowed-emails` — add an email; immediately sends the invited viewer an onboarding email with the gallery link
-- `DELETE /api/admin/galleries/:id/allowed-emails/:email` — remove access
-
-**Viewer auth change (`POST /api/viewer/gallery/:slug/login`):**
-- Existing password flow is unchanged.
-- Add an alternative path: if the gallery has any rows in `gallery_allowed_emails`, also accept `{ email }` with no password → generate a viewer OTP code stored in `verification`, send it via Resend, return `{ requiresOtp: true }`. A second call `POST /api/viewer/gallery/:slug/verify-otp` with `{ email, otp }` verifies the code and issues the viewer JWT cookie.
-- Public galleries remain fully open (no change).
-
----
-
-### Sub-task 9f — Admin user invitations
-
-**API route (admin-only):** `POST /api/admin/users/invite`
-- Accepts `{ email, name }`.
-- Creates a user in better-auth with a random placeholder password and `emailVerified: false`.
-- Sends the onboarding email via Resend with a magic link (better-auth `POST /api/auth/sign-in/magic-link` or a custom token stored in `verification`) so the invitee clicks once to land in the admin dashboard already signed in, then sets their own password.
-- The invited user appears in an `GET /api/admin/users` list.
+Likely improvements (to be confirmed after 9b):
+- Shared card/container layout used consistently across all auth pages
+- App name (or wordmark) at the top of every auth page
+- Consistent button styles and spacing matching the rest of the app (`ui.ts` tokens)
+- Proper error display component (not raw text, not an alert)
+- Disabled + loading state on the submit button during in-flight requests
+- Clear confirmation screen after magic link is sent (already added, verify it looks good)
+- Password fallback clearly secondary (already a divider, verify styling)
+- Reasonable mobile width
 
 ---
 
-### Sub-task 9g — Photo upload notifications
+### 9d — End-to-End Flow Testing
 
-**File:** `src/worker/routes/images.ts` (the upload handler)
+Manually step through every flow in the browser (both local dev and production) and verify:
 
-After a photo is successfully inserted:
-- Query `gallery_subscribers WHERE gallery_id = ? AND verified = 1`.
-- If any exist, fire a single `waitUntil` (non-blocking) send to each via Resend with the new-photos template.
-- Batch intelligently: if multiple photos are uploaded in one session, debounce by storing a pending-notify flag rather than sending one email per photo. For the initial implementation, a simpler approach is fine: send once per upload request (which may contain multiple files).
+- [ ] Admin setup: register → lands on dashboard
+- [ ] Admin login: email → receive OTP email → enter code → lands on dashboard
+- [ ] Admin login: wrong OTP → error shown, can retry
+- [ ] Gallery login (magic link): enter whitelisted email → receive email → click link → lands on gallery
+- [ ] Gallery login (magic link): enter non-whitelisted email → clear error (403), no email sent
+- [ ] Gallery login (magic link): click expired link → clear error, not a crash
+- [ ] Gallery login (password): correct password → lands on gallery
+- [ ] Gallery login (password): wrong password → error shown
+- [ ] Public gallery: navigating directly lands on gallery without any login prompt
+- [ ] Magic link URL contains `localhost` locally and `imago.berith.moe` in production
 
----
-
-### Sub-task 9h — Gallery expiry warning emails
-
-**Trigger:** Can be a Cloudflare Cron Trigger (add `[triggers] crons = ["0 9 * * *"]` to `wrangler.jsonc`) or triggered lazily on the first gallery fetch after the expiry window opens. The cron approach is cleaner.
-
-On schedule:
-- Query galleries where `expires_at BETWEEN now AND now + 7 days AND deleted_at IS NULL`.
-- For each, send the expiry warning email to all verified subscribers.
+Document any failures as issues to fix before closing the stage.
 
 ---
 
-### Miscellaneous (Stage 9)
+### 9e — Document Auth Architecture
 
-- [ ] Set real `RESEND_API_KEY` in production via `npm run secrets:push`
-- [ ] Add `FROM_EMAIL` binding (the "from" address must be a verified Resend domain) to `wrangler.jsonc` and `Bindings`
-- [ ] `dedicated lightbox route` `/gallery/:slug/photo/:id` — deep-linkable URL that opens the lightbox directly; useful for sharing individual photos via the new email notifications
+Write a short section in `DEPLOY.md` (or a new `AUTH.md`) describing:
+- The two auth systems in use (better-auth session for admin + viewer, viewer JWT cookie for password login) and why
+- How `requireViewer` middleware resolves access (public bypass → JWT cookie → better-auth session + whitelist check)
+- Environment variables required for auth to work (`BETTER_AUTH_SECRET`, `JWT_SECRET`, `APP_URL`)
+- How to test magic links locally (links go to `localhost:5173`, works via Vite proxy)
+
+---
+
+### Pending from earlier work
+
+- [ ] `dedicated lightbox route` `/gallery/:slug/photo/:id` — deep-linkable URL that opens the lightbox directly; useful for sharing individual photos in notification emails
+- [ ] Lightbox route should be shareable, that means when you click on a thumnail of a picture, the route should change so that you can copy the url and share it with someone, then when you try to load the picture, you see the login page, login through email and the linked picture should load
 
 ---
 
