@@ -47,6 +47,17 @@ npx wrangler r2 bucket create imago-images
 npx wrangler d1 migrations apply imago-db --remote
 ```
 
+### 4. Configure Resend email
+
+1. Create a free account at [resend.com](https://resend.com)
+2. **Verify a sending domain** — go to **Resend → Domains → Add Domain** and follow the DNS instructions. Alternatively you can use the Resend sandbox domain `onboarding@resend.dev` for testing (delivers only to the account owner's email).
+3. **Create an API key** — go to **Resend → API Keys → Create API Key** (give it "Send" access only).
+4. Set your secrets and vars:
+   - Add `RESEND_API_KEY` to `.prod.vars` then run `npm run secrets:push` (the key is a secret, never put it in `wrangler.jsonc`).
+   - Add `FROM_EMAIL=noreply@yourdomain.com` to `.prod.vars` with your verified sender address, then run `npm run secrets:push`.
+
+> **Note:** If `RESEND_API_KEY` is missing or is the placeholder value, the worker will log a warning and silently skip all email sends — the app continues to function normally without email delivery.
+
 ---
 
 ## Secrets
@@ -110,6 +121,8 @@ npm run db:migrate:local
 npx wrangler dev --port 8787   # Terminal 1
 npm run dev                     # Terminal 2
 ```
+
+> **Email in local dev:** `setup:dev` sets `RESEND_API_KEY` to a placeholder. Emails won't be sent — instead a warning is logged to the wrangler console. To test real email delivery locally, replace the `RESEND_API_KEY` and `FROM_EMAIL` values in `.dev.vars` with your actual key and a verified sender address.
 
 ### Ongoing local development
 

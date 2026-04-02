@@ -13,6 +13,7 @@ export default function App() {
       {/* Public */}
       <Route path="/" element={<GalleryIndex />} />
       <Route path="/gallery/:slug/login" element={<GalleryLogin />} />
+      <Route path="/gallery/:slug/photo/:photoId" element={<GalleryView />} />
       <Route path="/gallery/:slug" element={<GalleryView />} />
 
       {/* Admin */}

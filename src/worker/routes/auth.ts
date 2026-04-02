@@ -14,20 +14,19 @@ export const viewerRoutes = new Hono<{ Bindings: Bindings }>();
 viewerRoutes.post("/gallery/:slug/login", async (c) => {
   const { slug } = c.req.param();
   const body = await c.req.json<{ password?: string }>();
-  const password = body.password ?? "";
 
   const gallery = await c.env.DB.prepare(
-    "SELECT id, password_hash, is_public FROM galleries WHERE slug = ? AND deleted_at IS NULL"
+    "SELECT id, password_hash, is_public, name FROM galleries WHERE slug = ? AND deleted_at IS NULL"
   )
     .bind(slug)
-    .first<{ id: string; password_hash: string; is_public: number }>();
+    .first<{ id: string; password_hash: string; is_public: number; name: string }>();
 
   if (!gallery) return c.json({ error: "Gallery not found" }, 404);
 
   // Public galleries: skip password check entirely
   if (!gallery.is_public) {
-    if (!password) return c.json({ error: "Password required" }, 400);
-    const valid = await pbkdf2Verify(password, gallery.password_hash);
+    if (!body.password) return c.json({ error: "Password required" }, 400);
+    const valid = await pbkdf2Verify(body.password, gallery.password_hash);
     if (!valid) return c.json({ error: "Invalid password" }, 401);
   }
 
@@ -43,6 +42,40 @@ viewerRoutes.post("/gallery/:slug/login", async (c) => {
     sameSite: "Lax",
     maxAge: 60 * 60 * 24,
     path: "/",
+  });
+
+  return c.json({ ok: true });
+});
+
+// ------------------------------------------------------------------
+// Viewer: request a magic link (email must be on the gallery whitelist)
+// ------------------------------------------------------------------
+viewerRoutes.post("/gallery/:slug/magic-link", async (c) => {
+  const { slug } = c.req.param();
+  const { email } = await c.req.json<{ email: string }>();
+
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return c.json({ error: "Valid email required" }, 400);
+  }
+
+  const gallery = await c.env.DB.prepare(
+    "SELECT id, name FROM galleries WHERE slug = ? AND deleted_at IS NULL"
+  ).bind(slug).first<{ id: string; name: string }>();
+  if (!gallery) return c.json({ error: "Gallery not found" }, 404);
+
+  const normalised = email.trim().toLowerCase();
+  const allowed = await c.env.DB.prepare(
+    "SELECT id FROM gallery_allowed_emails WHERE gallery_id = ? AND lower(email) = ?"
+  ).bind(gallery.id, normalised).first();
+  if (!allowed) return c.json({ error: "Email not on access list" }, 403);
+
+  const origin = new URL(c.req.raw.url).origin;
+  await auth(c.env, origin).api.signInMagicLink({
+    body: {
+      email: normalised,
+      callbackURL: `/gallery/${slug}`,
+    },
+    headers: c.req.raw.headers,
   });
 
   return c.json({ ok: true });
@@ -79,6 +112,30 @@ viewerRoutes.post("/admin/recover", async (c) => {
   }
   await c.env.DB.prepare("DELETE FROM user").run();
   await logAdminEvent(c.env.DB, "ADMIN_RECOVER");
+  return c.json({ ok: true });
+});
+
+// ------------------------------------------------------------------
+// Admin: recover-by-email — send OTP to stored recovery email
+// No auth required (locked-out admin can't authenticate)
+// ------------------------------------------------------------------
+viewerRoutes.post("/admin/recover-by-email", async (c) => {
+  const row = await c.env.DB.prepare(
+    "SELECT value FROM app_config WHERE key = 'recovery_email'"
+  ).first<{ value: string }>();
+
+  // Always return ok to avoid leaking whether a recovery email is configured
+  if (!row) return c.json({ ok: true });
+
+  const origin = new URL(c.req.raw.url).origin;
+  try {
+    await auth(c.env, origin).api.sendVerificationOTP({
+      body: { email: row.value, type: "sign-in" },
+    });
+  } catch (err) {
+    console.error("[recover-by-email] Failed to send OTP:", err);
+  }
+
   return c.json({ ok: true });
 });
 

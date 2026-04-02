@@ -4,7 +4,7 @@ import { createAuthClient } from "better-auth/client";
 import { SpinnerOverlay } from "@/client/components/Spinner";
 import { EmptyState } from "@/client/components/EmptyState";
 import { PhotoThumbnail } from "@/client/components/PhotoThumbnail";
-import { cardSmallStyle, accentButtonStyle, iconButtonStyle, ghostButtonStyle, dangerButtonStyle, formatSize } from "@/client/components/ui";
+import { cardSmallStyle, accentButtonStyle, iconButtonStyle, ghostButtonStyle, dangerButtonStyle, formatSize, inputStyle } from "@/client/components/ui";
 import { exportGallery } from "@/client/lib/exportGallery";
 import { PasswordField } from "@/client/components/PasswordField";
 
@@ -52,7 +52,6 @@ export function AdminGallery() {
   const [settingBanner, setSettingBanner] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsName, setSettingsName] = useState("");
-  const [settingsDescription, setSettingsDescription] = useState("");
   const [settingsEventDate, setSettingsEventDate] = useState("");
   const [settingsExpiresAt, setSettingsExpiresAt] = useState("");
   const [savingSettings, setSavingSettings] = useState(false);
@@ -64,6 +63,10 @@ export function AdminGallery() {
   const [exportDone, setExportDone] = useState(false);
   const [deletingGallery, setDeletingGallery] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [allowedEmails, setAllowedEmails] = useState<{ id: string; email: string; added_at: number }[]>([]);
+  const [newAllowedEmail, setNewAllowedEmail] = useState("");
+  const [addingEmail, setAddingEmail] = useState(false);
+  const [removingEmail, setRemovingEmail] = useState<string | null>(null);
 
   useEffect(() => {
     authClient.getSession({ fetchOptions: { credentials: "include" } }).then(({ data }) => {
@@ -75,7 +78,10 @@ export function AdminGallery() {
   async function loadPhotos() {
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/galleries/${id}/photos`, { credentials: "include" });
+      const [res, emailsRes] = await Promise.all([
+        fetch(`/api/admin/galleries/${id}/photos`, { credentials: "include" }),
+        fetch(`/api/admin/galleries/${id}/allowed-emails`, { credentials: "include" }),
+      ]);
       if (res.status === 401) { navigate("/admin/login"); return; }
       if (res.status === 404) { navigate("/admin"); return; }
       if (!res.ok) throw new Error(`Server error ${res.status}`);
@@ -84,9 +90,12 @@ export function AdminGallery() {
       setPhotos(data.photos ?? []);
       // Pre-fill settings form
       setSettingsName(data.gallery.name);
-      setSettingsDescription("");
       setSettingsEventDate(data.gallery.event_date ? toDateInputValue(data.gallery.event_date) : "");
       setSettingsExpiresAt(data.gallery.expires_at ? toDateInputValue(data.gallery.expires_at) : "");
+      if (emailsRes.ok) {
+        const emailsData = await emailsRes.json() as { allowedEmails: { id: string; email: string; added_at: number }[] };
+        setAllowedEmails(emailsData.allowedEmails);
+      }
     } catch (err) {
       console.error("Failed to load photos", err);
     } finally {
@@ -223,6 +232,40 @@ export function AdminGallery() {
     setDeletingGallery(true);
     await fetch(`/api/admin/galleries/${id}/permanent`, { method: "DELETE", credentials: "include" });
     navigate("/admin");
+  }
+
+  async function handleAddEmail(e: React.FormEvent) {
+    e.preventDefault();
+    const trimmed = newAllowedEmail.trim();
+    if (!trimmed) return;
+    setAddingEmail(true);
+    try {
+      const res = await fetch(`/api/admin/galleries/${id}/allowed-emails`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email: trimmed }),
+      });
+      const data = await res.json() as { ok?: boolean; error?: string; id?: string };
+      if (res.ok) {
+        setAllowedEmails((prev) => [...prev, { id: data.id!, email: trimmed.toLowerCase(), added_at: Math.floor(Date.now() / 1000) }]);
+        setNewAllowedEmail("");
+      } else {
+        alert(data.error ?? "Failed to add email");
+      }
+    } finally {
+      setAddingEmail(false);
+    }
+  }
+
+  async function handleRemoveEmail(email: string) {
+    setRemovingEmail(email);
+    await fetch(`/api/admin/galleries/${id}/allowed-emails/${encodeURIComponent(email)}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    setAllowedEmails((prev) => prev.filter((e) => e.email !== email));
+    setRemovingEmail(null);
   }
 
   async function handleExport() {
@@ -382,72 +425,151 @@ export function AdminGallery() {
 
       {/* Settings panel */}
       {showSettings && (
-        <form
-          onSubmit={handleSaveSettings}
-          style={{
-            marginBottom: 32,
-            padding: "20px 24px",
-            background: "var(--color-surface)",
-            border: "1px solid var(--color-border)",
-            borderRadius: "var(--radius)",
-            display: "flex",
-            flexDirection: "column",
-            gap: 14,
-          }}
-        >
-          <h3 style={{ fontWeight: 600, fontSize: "1rem", marginBottom: 4 }}>Gallery Settings</h3>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <label style={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>Gallery name</label>
-              <input
-                value={settingsName}
-                onChange={(e) => setSettingsName(e.target.value)}
-                required
-                style={{ padding: "8px 12px", background: "var(--color-bg)", border: "1px solid var(--color-border)", borderRadius: "var(--radius)", color: "var(--color-text)", fontSize: "0.9rem", outline: "none" }}
-              />
+        <>
+          <form
+            onSubmit={handleSaveSettings}
+            style={{
+              marginBottom: 32,
+              padding: "20px 24px",
+              background: "var(--color-surface)",
+              border: "1px solid var(--color-border)",
+              borderRadius: "var(--radius)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 14,
+            }}
+          >
+            <h3 style={{ fontWeight: 600, fontSize: "1rem", marginBottom: 4 }}>Gallery Settings</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>Gallery name</label>
+                <input
+                  value={settingsName}
+                  onChange={(e) => setSettingsName(e.target.value)}
+                  required
+                  style={{ padding: "8px 12px", background: "var(--color-bg)", border: "1px solid var(--color-border)", borderRadius: "var(--radius)", color: "var(--color-text)", fontSize: "0.9rem", outline: "none" }}
+                />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>Event / shoot date</label>
+                <input
+                  type="date"
+                  value={settingsEventDate}
+                  onChange={(e) => setSettingsEventDate(e.target.value)}
+                  style={{ padding: "8px 12px", background: "var(--color-bg)", border: "1px solid var(--color-border)", borderRadius: "var(--radius)", color: "var(--color-text)", fontSize: "0.9rem", outline: "none" }}
+                />
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>Expiry date <span style={{ color: "var(--color-text-muted)", fontStyle: "italic" }}>(gallery hides automatically)</span></label>
+                <input
+                  type="date"
+                  value={settingsExpiresAt}
+                  onChange={(e) => setSettingsExpiresAt(e.target.value)}
+                  style={{ padding: "8px 12px", background: "var(--color-bg)", border: "1px solid var(--color-border)", borderRadius: "var(--radius)", color: "var(--color-text)", fontSize: "0.9rem", outline: "none" }}
+                />
+              </div>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <label style={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>Event / shoot date</label>
-              <input
-                type="date"
-                value={settingsEventDate}
-                onChange={(e) => setSettingsEventDate(e.target.value)}
-                style={{ padding: "8px 12px", background: "var(--color-bg)", border: "1px solid var(--color-border)", borderRadius: "var(--radius)", color: "var(--color-text)", fontSize: "0.9rem", outline: "none" }}
-              />
+            <div style={{ display: "flex", gap: 10 }}>
+              <button type="submit" disabled={savingSettings} style={{ padding: "8px 18px", background: "var(--color-accent)", border: "none", borderRadius: "var(--radius)", color: "#0f0f0f", fontWeight: 600, fontSize: "0.9rem", cursor: "pointer" }}>
+                {savingSettings ? "Saving…" : "Save"}
+              </button>
+              <button type="button" onClick={() => setShowSettings(false)} style={{ padding: "8px 18px", background: "none", border: "1px solid var(--color-border)", borderRadius: "var(--radius)", color: "var(--color-text-muted)", fontSize: "0.9rem", cursor: "pointer" }}>
+                Cancel
+              </button>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <label style={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>Expiry date <span style={{ color: "var(--color-text-muted)", fontStyle: "italic" }}>(gallery hides automatically)</span></label>
-              <input
-                type="date"
-                value={settingsExpiresAt}
-                onChange={(e) => setSettingsExpiresAt(e.target.value)}
-                style={{ padding: "8px 12px", background: "var(--color-bg)", border: "1px solid var(--color-border)", borderRadius: "var(--radius)", color: "var(--color-text)", fontSize: "0.9rem", outline: "none" }}
-              />
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 10 }}>
-            <button type="submit" disabled={savingSettings} style={{ padding: "8px 18px", background: "var(--color-accent)", border: "none", borderRadius: "var(--radius)", color: "#0f0f0f", fontWeight: 600, fontSize: "0.9rem", cursor: "pointer" }}>
-              {savingSettings ? "Saving…" : "Save"}
-            </button>
-            <button type="button" onClick={() => setShowSettings(false)} style={{ padding: "8px 18px", background: "none", border: "1px solid var(--color-border)", borderRadius: "var(--radius)", color: "var(--color-text-muted)", fontSize: "0.9rem", cursor: "pointer" }}>
-              Cancel
-            </button>
-          </div>
 
-          {/* Password reset — separate submit so it doesn't save other settings */}
-          <div style={{ marginTop: 8, paddingTop: 16, borderTop: "1px solid var(--color-border)" }}>
-            <label style={{ fontSize: "0.8rem", color: "var(--color-text-muted)", display: "block", marginBottom: 6 }}>Reset gallery password</label>
-            <PasswordField
-              value={newPassword}
-              onChange={setNewPassword}
-              placeholder="New password"
-              onAction={handleResetPassword}
-              actionLoading={resettingPassword}
-              actionDone={passwordResetDone}
-              showGenerate={true}
-            />
+            {/* Password reset — separate submit so it doesn't save other settings */}
+            <div style={{ marginTop: 8, paddingTop: 16, borderTop: "1px solid var(--color-border)" }}>
+              <label style={{ fontSize: "0.8rem", color: "var(--color-text-muted)", display: "block", marginBottom: 6 }}>Reset gallery password</label>
+              <PasswordField
+                value={newPassword}
+                onChange={setNewPassword}
+                placeholder="New password"
+                onAction={handleResetPassword}
+                actionLoading={resettingPassword}
+                actionDone={passwordResetDone}
+                showGenerate={true}
+              />
+            </div>
+          </form>
+
+          {/* Email whitelist */}
+          <div
+            style={{
+              marginBottom: 32,
+              padding: "20px 24px",
+              background: "var(--color-surface)",
+              border: "1px solid var(--color-border)",
+              borderRadius: "var(--radius)",
+            }}
+          >
+            <h3 style={{ fontWeight: 600, fontSize: "1rem", marginBottom: 12 }}>
+              Allowed email addresses
+              <span style={{ fontWeight: 400, fontSize: "0.8rem", color: "var(--color-text-muted)", marginLeft: 8 }}>
+                passwordless access via OTP
+              </span>
+            </h3>
+            {allowedEmails.length === 0 ? (
+              <p style={{ fontSize: "0.85rem", color: "var(--color-text-muted)", marginBottom: 12 }}>
+                No email addresses on the access list yet.
+              </p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 14 }}>
+                {allowedEmails.map((entry) => (
+                  <div
+                    key={entry.id}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "6px 12px",
+                      background: "var(--color-bg)",
+                      border: "1px solid var(--color-border)",
+                      borderRadius: "var(--radius)",
+                      fontSize: "0.875rem",
+                    }}
+                  >
+                    <span>{entry.email}</span>
+                    <button
+                      onClick={() => handleRemoveEmail(entry.email)}
+                      disabled={removingEmail === entry.email}
+                      style={{ ...iconButtonStyle, opacity: removingEmail === entry.email ? 0.5 : 1 }}
+                      title="Remove access"
+                    >
+                      {removingEmail === entry.email ? "…" : "✕"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <form onSubmit={handleAddEmail} style={{ display: "flex", gap: 8 }}>
+              <input
+                type="email"
+                placeholder="Add email address…"
+                value={newAllowedEmail}
+                onChange={(e) => setNewAllowedEmail(e.target.value)}
+                style={{ ...inputStyle, flex: 1 }}
+              />
+              <button
+                type="submit"
+                disabled={addingEmail || !newAllowedEmail.trim()}
+                style={{
+                  padding: "8px 16px",
+                  background: "var(--color-accent)",
+                  border: "none",
+                  borderRadius: "var(--radius)",
+                  color: "#0f0f0f",
+                  fontWeight: 600,
+                  fontSize: "0.875rem",
+                  cursor: addingEmail ? "not-allowed" : "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {addingEmail ? "Adding…" : "Add & invite"}
+              </button>
+            </form>
           </div>
-        </form>
+        </>
       )}
 
       {/* Photo grid */}

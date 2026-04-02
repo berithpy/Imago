@@ -5,6 +5,7 @@ import { Bindings } from "../index";
 import { pbkdf2Hash } from "../lib/crypto";
 import { auth } from "../lib/auth";
 import { logAdminEvent } from "../lib/adminLog";
+import { sendEmail, invitedUserHtml, newPhotosHtml } from "../lib/email";
 
 export const adminRoutes = new Hono<{ Bindings: Bindings }>();
 
@@ -32,16 +33,23 @@ adminRoutes.post("/setup", async (c) => {
     return c.json({ error: "Admin already configured" }, 403);
   }
 
-  const { email, password, name } = await c.req.json<{
+  const { email, password, name, recoveryEmail } = await c.req.json<{
     email: string;
     password: string;
     name: string;
+    recoveryEmail?: string;
   }>();
 
   const origin = new URL(c.req.raw.url).origin;
   const result = await auth(c.env, origin).api.signUpEmail({
     body: { email, password, name },
   });
+
+  // Store recovery email in app_config (defaults to admin email)
+  const resolvedRecovery = recoveryEmail?.trim() || email;
+  await c.env.DB.prepare(
+    "INSERT OR REPLACE INTO app_config (key, value) VALUES ('recovery_email', ?)"
+  ).bind(resolvedRecovery).run();
 
   await logAdminEvent(c.env.DB, "ADMIN_SETUP");
 
@@ -294,7 +302,6 @@ adminRoutes.get("/galleries/:id/photos", async (c) => {
 });
 
 // ------------------------------------------------------------------
-// Photos: upload
 // ------------------------------------------------------------------
 // Photos: upload
 // ------------------------------------------------------------------
@@ -302,10 +309,10 @@ adminRoutes.post("/galleries/:id/photos", async (c) => {
   const { id } = c.req.param();
 
   const gallery = await c.env.DB.prepare(
-    "SELECT id FROM galleries WHERE id = ?"
+    "SELECT id, name, slug FROM galleries WHERE id = ?"
   )
     .bind(id)
-    .first<{ id: string }>();
+    .first<{ id: string; name: string; slug: string }>();
   if (!gallery) return c.json({ error: "Gallery not found" }, 404);
 
   const formData = await c.req.formData();
@@ -332,6 +339,26 @@ adminRoutes.post("/galleries/:id/photos", async (c) => {
   )
     .bind(photoId, id, r2Key, file.name, file.size, now, now)
     .run();
+
+  // Notify verified subscribers — non-blocking
+  const { results: subscribers } = await c.env.DB.prepare(
+    "SELECT email FROM gallery_subscribers WHERE gallery_id = ? AND verified = 1"
+  ).bind(id).all<{ email: string }>();
+
+  if (subscribers.length > 0) {
+    const origin = new URL(c.req.raw.url).origin;
+    const galleryUrl = `${origin}/gallery/${gallery.slug}`;
+    const notifyAll = Promise.all(
+      subscribers.map((s) =>
+        sendEmail(c.env.RESEND_API_KEY, c.env.FROM_EMAIL, {
+          to: s.email,
+          subject: `New photo added to ${gallery.name}`,
+          html: newPhotosHtml(gallery.name, galleryUrl, 1),
+        })
+      )
+    );
+    c.executionCtx?.waitUntil(notifyAll);
+  }
 
   return c.json(
     { ok: true, photo: { id: photoId, r2_key: r2Key, original_name: file.name, size: file.size, uploaded_at: now } },
@@ -399,4 +426,101 @@ adminRoutes.get("/log", async (c) => {
     "SELECT id, event, detail, created_at FROM admin_log ORDER BY created_at DESC LIMIT 200"
   ).all<{ id: number; event: string; detail: string | null; created_at: number }>();
   return c.json({ log: results });
+});
+
+// ------------------------------------------------------------------
+// Per-gallery email whitelist (admin-only)
+// ------------------------------------------------------------------
+adminRoutes.get("/galleries/:id/allowed-emails", async (c) => {
+  const { id } = c.req.param();
+  const { results } = await c.env.DB.prepare(
+    "SELECT id, email, added_at FROM gallery_allowed_emails WHERE gallery_id = ? ORDER BY added_at ASC"
+  ).bind(id).all<{ id: string; email: string; added_at: number }>();
+  return c.json({ allowedEmails: results });
+});
+
+adminRoutes.post("/galleries/:id/allowed-emails", async (c) => {
+  const { id } = c.req.param();
+  const { email } = await c.req.json<{ email: string }>();
+
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return c.json({ error: "Valid email required" }, 400);
+  }
+
+  const gallery = await c.env.DB.prepare(
+    "SELECT id, name, slug FROM galleries WHERE id = ? AND deleted_at IS NULL"
+  ).bind(id).first<{ id: string; name: string; slug: string }>();
+  if (!gallery) return c.json({ error: "Gallery not found" }, 404);
+
+  const entryId = crypto.randomUUID();
+  try {
+    await c.env.DB.prepare(
+      "INSERT INTO gallery_allowed_emails (id, gallery_id, email) VALUES (?, ?, ?)"
+    ).bind(entryId, id, email.trim().toLowerCase()).run();
+  } catch {
+    return c.json({ error: "Email already on the access list" }, 409);
+  }
+
+  const origin = new URL(c.req.raw.url).origin;
+  const galleryUrl = `${origin}/gallery/${gallery.slug}`;
+  await sendEmail(c.env.RESEND_API_KEY, c.env.FROM_EMAIL, {
+    to: email,
+    subject: `You've been invited to view ${gallery.name}`,
+    html: invitedUserHtml(gallery.name, galleryUrl, email),
+  });
+
+  return c.json({ ok: true, id: entryId }, 201);
+});
+
+adminRoutes.delete("/galleries/:id/allowed-emails/:email", async (c) => {
+  const { id, email } = c.req.param();
+  const decodedEmail = decodeURIComponent(email);
+  await c.env.DB.prepare(
+    "DELETE FROM gallery_allowed_emails WHERE gallery_id = ? AND lower(email) = lower(?)"
+  ).bind(id, decodedEmail).run();
+  return c.json({ ok: true });
+});
+
+// ------------------------------------------------------------------
+// Admin user management
+// ------------------------------------------------------------------
+adminRoutes.get("/users", async (c) => {
+  const { results } = await c.env.DB.prepare(
+    "SELECT id, name, email, emailVerified, createdAt FROM user ORDER BY createdAt ASC"
+  ).all<{ id: string; name: string; email: string; emailVerified: number; createdAt: number }>();
+  return c.json({ users: results });
+});
+
+adminRoutes.post("/users/invite", async (c) => {
+  const { email, name } = await c.req.json<{ email: string; name: string }>();
+
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return c.json({ error: "Valid email required" }, 400);
+  }
+  if (!name?.trim()) {
+    return c.json({ error: "Name required" }, 400);
+  }
+
+  const origin = new URL(c.req.raw.url).origin;
+  try {
+    await auth(c.env, origin).api.signUpEmail({
+      body: { email: email.trim(), name: name.trim(), password: crypto.randomUUID() },
+    });
+  } catch (err: any) {
+    if (err?.message?.includes("already") || err?.status === 422) {
+      return c.json({ error: "User with this email already exists" }, 409);
+    }
+    return c.json({ error: "Failed to create user" }, 500);
+  }
+
+  const adminLoginUrl = `${origin}/admin/login`;
+  await sendEmail(c.env.RESEND_API_KEY, c.env.FROM_EMAIL, {
+    to: email,
+    subject: "You've been invited to Imago",
+    html: invitedUserHtml("Imago", adminLoginUrl, email),
+  });
+
+  await logAdminEvent(c.env.DB, "USER_INVITED", email);
+
+  return c.json({ ok: true, user: { email, name } });
 });

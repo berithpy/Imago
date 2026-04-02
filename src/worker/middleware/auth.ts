@@ -30,48 +30,78 @@ async function checkPublicGallery(
 }
 
 /**
- * Middleware: require a valid viewer JWT cookie.
- * Also checks that the token's galleryId matches the :slug param in D1.
- * Public galleries bypass JWT entirely.
+ * Middleware: require a valid viewer JWT cookie OR a better-auth session with
+ * the user's email on the gallery's allowed-emails list.
+ * Public galleries bypass auth entirely.
  */
 export async function requireViewer(
   c: Context<{ Bindings: Bindings; Variables: { viewerPayload: ViewerJWTPayload } }>,
   next: Next
 ) {
-  // Public galleries: allow access without any token
   const slug = c.req.param("slug");
+
+  // 1. Public gallery — no auth needed
   if (await checkPublicGallery(c.env.DB, slug)) {
     await next();
     return;
   }
 
+  // 2. Viewer JWT cookie (password-based login / admin bypass)
   const token = getCookie(c, "viewer_token");
-  if (!token) return c.json({ error: "Unauthorized" }, 401);
+  if (token) {
+    let payload: ViewerJWTPayload;
+    try {
+      payload = (await verify(token, c.env.JWT_SECRET, "HS256")) as ViewerJWTPayload;
+    } catch {
+      return c.json({ error: "Invalid or expired token" }, 401);
+    }
 
-  let payload: ViewerJWTPayload;
-  try {
-    payload = (await verify(token, c.env.JWT_SECRET, "HS256")) as ViewerJWTPayload;
-  } catch {
-    return c.json({ error: "Invalid or expired token" }, 401);
+    if (payload.sub !== "viewer") return c.json({ error: "Forbidden" }, 403);
+
+    if (slug) {
+      const gallery = await c.env.DB.prepare(
+        "SELECT id FROM galleries WHERE slug = ?"
+      )
+        .bind(slug)
+        .first<{ id: string }>();
+
+      if (!gallery || gallery.id !== payload.galleryId) {
+        return c.json({ error: "Forbidden" }, 403);
+      }
+    }
+
+    c.set("viewerPayload", payload);
+    await next();
+    return;
   }
 
-  if (payload.sub !== "viewer") return c.json({ error: "Forbidden" }, 403);
-
-  // Verify galleryId matches the slug in the URL
+  // 3. Better-auth session (magic link / email user)
   if (slug) {
-    const gallery = await c.env.DB.prepare(
-      "SELECT id FROM galleries WHERE slug = ?"
-    )
-      .bind(slug)
-      .first<{ id: string }>();
-
-    if (!gallery || gallery.id !== payload.galleryId) {
-      return c.json({ error: "Forbidden" }, 403);
+    try {
+      const origin = new URL(c.req.raw.url).origin;
+      const session = await auth(c.env, origin).api.getSession({
+        headers: c.req.raw.headers,
+      });
+      if (session?.user?.email) {
+        const gallery = await c.env.DB.prepare(
+          "SELECT id FROM galleries WHERE slug = ? AND deleted_at IS NULL"
+        ).bind(slug).first<{ id: string }>();
+        if (gallery) {
+          const allowed = await c.env.DB.prepare(
+            "SELECT id FROM gallery_allowed_emails WHERE gallery_id = ? AND lower(email) = lower(?)"
+          ).bind(gallery.id, session.user.email).first();
+          if (allowed) {
+            await next();
+            return;
+          }
+        }
+      }
+    } catch {
+      // fall through to 401
     }
   }
 
-  c.set("viewerPayload", payload);
-  await next();
+  return c.json({ error: "Unauthorized" }, 401);
 }
 
 /**

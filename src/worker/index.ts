@@ -17,6 +17,9 @@ export type Bindings = {
   BETTER_AUTH_SECRET: string;
   ADMIN_RESET_SECRET: string;
   RESEND_API_KEY: string;
+  // Vars
+  FROM_EMAIL: string;
+  APP_URL: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>();

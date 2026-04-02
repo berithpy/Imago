@@ -6,6 +6,7 @@ export function AdminSetup() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [recoveryEmail, setRecoveryEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
@@ -19,7 +20,7 @@ export function AdminSetup() {
       const res = await fetch("/api/admin/setup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify({ name, email, password, recoveryEmail: recoveryEmail || undefined }),
       });
       const data = await res.json() as { error?: string };
       if (res.ok) {
@@ -88,6 +89,13 @@ export function AdminSetup() {
             placeholder="Password (min 8 characters)"
             required
             minLength={8}
+            style={inputStyle}
+          />
+          <input
+            type="email"
+            value={recoveryEmail}
+            onChange={(e) => setRecoveryEmail(e.target.value)}
+            placeholder="Recovery email (optional, defaults to admin email)"
             style={inputStyle}
           />
 

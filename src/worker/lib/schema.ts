@@ -108,3 +108,18 @@ export const adminLog = sqliteTable("admin_log", {
 }, (t) => [
   index("idx_admin_log_created").on(t.createdAt),
 ]);
+
+export const appConfig = sqliteTable("app_config", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+});
+
+export const galleryAllowedEmails = sqliteTable("gallery_allowed_emails", {
+  id: text("id").primaryKey(),
+  galleryId: text("gallery_id").notNull().references(() => galleries.id, { onDelete: "cascade" }),
+  email: text("email").notNull(),
+  addedAt: integer("added_at").notNull().default(sql`(unixepoch())`),
+}, (t) => [
+  uniqueIndex("idx_allowed_gallery_email").on(t.galleryId, t.email),
+  index("idx_allowed_emails_gallery").on(t.galleryId),
+]);

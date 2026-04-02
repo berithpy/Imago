@@ -54,7 +54,7 @@
    * Note: Use secrets to store sensitive data.
    * https://developers.cloudflare.com/workers/configuration/secrets/
    */
-  // "vars": {  "MY_VARIABLE": "production_value" }
+  // vars are set via .dev.vars (local) and .prod.vars + npm run secrets:push (production)
   /**
    * Service Bindings (communicate between multiple Workers)
    * https://developers.cloudflare.com/workers/wrangler/configuration/#service-bindings

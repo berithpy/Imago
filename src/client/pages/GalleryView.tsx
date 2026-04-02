@@ -72,7 +72,7 @@ function MasonryGrid({
 }
 
 export function GalleryView() {
-  const { slug } = useParams<{ slug: string }>();
+  const { slug, photoId: deepLinkedPhotoId } = useParams<{ slug: string; photoId?: string }>();
   const navigate = useNavigate();
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -145,6 +145,12 @@ export function GalleryView() {
         setPhotos(data.photos);
         setNextCursor(data.nextCursor);
         setTotal(data.total);
+
+        // Deep-link: auto-open the lightbox if a photoId is in the URL
+        if (deepLinkedPhotoId) {
+          const target = data.photos.find((p: Photo) => p.id === deepLinkedPhotoId);
+          if (target && !cancelled) setLightbox(target);
+        }
       } catch {
         setError("Failed to load photos");
       } finally {
@@ -154,7 +160,7 @@ export function GalleryView() {
 
     init();
     return () => { cancelled = true; };
-  }, [slug, navigate, fetchPhotos]);
+  }, [slug, navigate, fetchPhotos, deepLinkedPhotoId]);
 
   const loadMore = useCallback(async () => {
     if (!nextCursor || loadingMoreRef.current) return;
