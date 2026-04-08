@@ -1,10 +1,10 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { emailOTP, magicLink } from "better-auth/plugins";
+import { magicLink } from "better-auth/plugins";
 import { drizzle } from "drizzle-orm/d1";
 import { Bindings } from "../index";
 import * as schema from "./schema";
-import { sendEmail, adminOtpHtml, magicLinkHtml } from "./email";
+import { sendEmail, adminMagicLinkHtml, magicLinkHtml } from "./email";
 
 /**
  * Creates a better-auth instance bound to the runtime D1 database.
@@ -23,24 +23,15 @@ export function auth(env: Bindings, origin?: string) {
       enabled: true,
     },
     plugins: [
-      emailOTP({
-        otpLength: 6,
-        expiresIn: 600,
-        async sendVerificationOTP({ email, otp }) {
-          await sendEmail(env.RESEND_API_KEY, env.FROM_EMAIL, {
-            to: email,
-            subject: "Your sign-in code",
-            html: adminOtpHtml(otp),
-          });
-        },
-      }),
       magicLink({
         expiresIn: 600,
         sendMagicLink: async ({ email, url }) => {
+          const adminRow = await db.select({ email: schema.user.email }).from(schema.user).limit(1);
+          const isAdmin = adminRow.length > 0 && adminRow[0].email.toLowerCase() === email.toLowerCase();
           await sendEmail(env.RESEND_API_KEY, env.FROM_EMAIL, {
             to: email,
             subject: "Your sign-in link",
-            html: magicLinkHtml("the gallery", url),
+            html: isAdmin ? adminMagicLinkHtml(url) : magicLinkHtml("the gallery", url),
           });
         },
       }),

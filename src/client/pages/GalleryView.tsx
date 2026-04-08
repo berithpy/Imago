@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { Masonry } from "masonic";
 import { Spinner, SpinnerOverlay } from "@/client/components/Spinner";
 import { ErrorMessage } from "@/client/components/ErrorMessage";
@@ -50,11 +50,13 @@ function MasonryGrid({
   total,
   onPhotoClick,
   showInfo,
+  scrollToIndex,
 }: {
   photos: Photo[];
   total: number;
   onPhotoClick: (p: Photo) => void;
   showInfo: boolean;
+  scrollToIndex?: number;
 }) {
   // Attach click handler via a static property to avoid recreating render fn
   (PhotoCard as any)._ctx = { onClick: onPhotoClick, total, showInfo };
@@ -67,13 +69,23 @@ function MasonryGrid({
       columnGutter={12}
       itemKey={(data: Photo) => `${data.id}-${showInfo}`}
       itemHeightEstimate={320}
+      scrollToIndex={scrollToIndex == null ? undefined : { index: scrollToIndex, align: "center" }}
     />
   );
 }
 
 export function GalleryView() {
-  const { slug, photoId: deepLinkedPhotoId } = useParams<{ slug: string; photoId?: string }>();
+  const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const getPhotoIdFromPath = useCallback((pathname: string): string | undefined => {
+    if (!slug) return undefined;
+    const prefix = `/gallery/${slug}/photo/`;
+    if (!pathname.startsWith(prefix)) return undefined;
+    const rawPhotoId = pathname.slice(prefix.length).split("/")[0];
+    return rawPhotoId ? decodeURIComponent(rawPhotoId) : undefined;
+  }, [slug]);
+  const [routePhotoId, setRoutePhotoId] = useState<string | undefined>(() => getPhotoIdFromPath(window.location.pathname));
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [total, setTotal] = useState<number>(0);
@@ -93,6 +105,30 @@ export function GalleryView() {
 
   const loadingMoreRef = useRef(false);
   const observerRef = useRef<IntersectionObserver | null>(null);
+  const getPhotoIdFromPathRef = useRef(getPhotoIdFromPath);
+  const initialRoutePhotoIdRef = useRef(routePhotoId);
+  const initialDeepLinkScrollCompleteRef = useRef(!routePhotoId);
+  const [pendingScrollToIndex, setPendingScrollToIndex] = useState<number | undefined>(undefined);
+  getPhotoIdFromPathRef.current = getPhotoIdFromPath;
+
+  // Keep modal route state synced when React Router navigates normally.
+  // Mirror router pathname changes into the local modal-photo state.
+  useEffect(() => {
+    setRoutePhotoId(getPhotoIdFromPath(location.pathname));
+  }, [location.pathname, getPhotoIdFromPath]);
+
+  // Back/forward events are outside React, so listen once at window level.
+  // A ref keeps the latest pathname parser without re-subscribing the listener.
+  // Keep browser back/forward shallow-route changes in sync with the modal state.
+  useEffect(() => {
+    const onPopState = () => {
+      setRoutePhotoId(getPhotoIdFromPathRef.current(window.location.pathname));
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+    };
+  }, []);
 
   const fetchPhotos = useCallback(
     async (cursor?: string): Promise<FetchPhotosResult> => {
@@ -109,6 +145,17 @@ export function GalleryView() {
     [slug]
   );
 
+  const fetchSinglePhoto = useCallback(
+    async (photoId: string): Promise<Photo | null> => {
+      const res = await fetch(`/api/galleries/${slug}/photos/${photoId}`, { credentials: "include" });
+      if (!res.ok) return null;
+      const data = await res.json() as { photo?: Photo };
+      return data.photo ?? null;
+    },
+    [slug]
+  );
+
+  // Load gallery metadata and the first photo page whenever the gallery slug changes.
   useEffect(() => {
     let cancelled = false;
 
@@ -139,18 +186,15 @@ export function GalleryView() {
         if (cancelled) return;
         if (data.needsAuth) {
           // Only redirect to password login for private galleries
-          if (!isPublicGallery) navigate(`/gallery/${slug}/login`);
+          if (!isPublicGallery) {
+            navigate(`/gallery/${slug}/login?next=${encodeURIComponent(window.location.pathname)}`, { replace: true });
+          }
           return;
         }
         setPhotos(data.photos);
         setNextCursor(data.nextCursor);
         setTotal(data.total);
 
-        // Deep-link: auto-open the lightbox if a photoId is in the URL
-        if (deepLinkedPhotoId) {
-          const target = data.photos.find((p: Photo) => p.id === deepLinkedPhotoId);
-          if (target && !cancelled) setLightbox(target);
-        }
       } catch {
         setError("Failed to load photos");
       } finally {
@@ -160,7 +204,7 @@ export function GalleryView() {
 
     init();
     return () => { cancelled = true; };
-  }, [slug, navigate, fetchPhotos, deepLinkedPhotoId]);
+  }, [slug, navigate, fetchPhotos]);
 
   const loadMore = useCallback(async () => {
     if (!nextCursor || loadingMoreRef.current) return;
@@ -169,7 +213,9 @@ export function GalleryView() {
     try {
       const data = await fetchPhotos(nextCursor);
       if (data.needsAuth) {
-        if (!isPublic) navigate(`/gallery/${slug}/login`);
+        if (!isPublic) {
+          navigate(`/gallery/${slug}/login?next=${encodeURIComponent(window.location.pathname)}`, { replace: true });
+        }
         return;
       }
       setPhotos((prev) => [...prev, ...data.photos]);
@@ -180,6 +226,88 @@ export function GalleryView() {
       setLoadingMore(false);
     }
   }, [nextCursor, slug, isPublic, navigate, fetchPhotos]);
+
+  // Resolve the active route photo into a full lightbox object, fetching it if needed.
+  useEffect(() => {
+    let cancelled = false;
+
+    async function syncLightboxWithRoute() {
+      if (!routePhotoId) {
+        setLightbox((current) => (current ? null : current));
+        return;
+      }
+
+      const matching = photos.find((p) => p.id === routePhotoId);
+      if (matching) {
+        setLightbox((current) => (current?.id === matching.id ? current : matching));
+        return;
+      }
+
+      const deepLinkedPhoto = await fetchSinglePhoto(routePhotoId);
+      if (cancelled || !deepLinkedPhoto) return;
+
+      setLightbox((current) =>
+        current?.id === deepLinkedPhoto.id ? current : deepLinkedPhoto
+      );
+    }
+
+    syncLightboxWithRoute();
+    return () => {
+      cancelled = true;
+    };
+  }, [routePhotoId, photos, fetchSinglePhoto]);
+
+  // Clear the one-shot masonry scroll target after it has been applied for a frame.
+  useEffect(() => {
+    if (pendingScrollToIndex == null) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      setPendingScrollToIndex(undefined);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, [pendingScrollToIndex]);
+
+  // On first entry via a photo URL, keep paging until that photo is loaded and then scroll to it.
+  useEffect(() => {
+    const targetPhotoId = initialRoutePhotoIdRef.current;
+    if (!targetPhotoId || initialDeepLinkScrollCompleteRef.current || loading) return;
+
+    const targetIndex = photos.findIndex((photo) => photo.id === targetPhotoId);
+    if (targetIndex >= 0) {
+      initialDeepLinkScrollCompleteRef.current = true;
+      setPendingScrollToIndex(targetIndex);
+      return;
+    }
+
+    if (nextCursor && !loadingMore) {
+      void loadMore();
+      return;
+    }
+
+    if (!nextCursor) {
+      initialDeepLinkScrollCompleteRef.current = true;
+    }
+  }, [photos, nextCursor, loading, loadingMore, loadMore]);
+
+  const openLightbox = useCallback(
+    (photo: Photo) => {
+      setLightbox(photo);
+      // Shallow URL update: keep grid data/state intact while reflecting modal state.
+      window.history.pushState({}, "", `/gallery/${slug}/photo/${encodeURIComponent(photo.id)}`);
+      setRoutePhotoId(photo.id);
+    },
+    [slug]
+  );
+
+  const closeLightbox = useCallback(() => {
+    setLightbox(null);
+    // Mirror modal close in URL without triggering a route-level navigation.
+    window.history.pushState({}, "", `/gallery/${slug}`);
+    setRoutePhotoId(undefined);
+  }, [slug]);
 
   const setSentinel = useCallback((node: HTMLDivElement | null) => {
     if (observerRef.current) {
@@ -315,7 +443,13 @@ export function GalleryView() {
           {/* Photo grid */}
           {!loading && (
             <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-              <MasonryGrid photos={photos} total={total} onPhotoClick={setLightbox} showInfo={showInfo} />
+              <MasonryGrid
+                photos={photos}
+                total={total}
+                onPhotoClick={openLightbox}
+                showInfo={showInfo}
+                scrollToIndex={pendingScrollToIndex}
+              />
               <div ref={setSentinel} style={{ height: 1 }} />
               {loadingMore && (
                 <div style={{ display: "flex", justifyContent: "center", padding: "16px 0" }}>
@@ -334,7 +468,7 @@ export function GalleryView() {
               r2Key={lightbox.r2_key}
               alt={lightbox.original_name}
               filename={lightbox.original_name}
-              onClose={() => setLightbox(null)}
+              onClose={closeLightbox}
             />
           )}
         </>

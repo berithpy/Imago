@@ -88,30 +88,16 @@ export function newPhotosHtml(galleryName: string, galleryUrl: string, count: nu
 </html>`;
 }
 
-export function adminOtpHtml(otp: string): string {
+export function adminMagicLinkHtml(magicLinkUrl: string): string {
   return `<!DOCTYPE html>
 <html>
 <body style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#222;">
-  <h2 style="font-size:1.25rem;font-weight:700;margin-bottom:8px;">Your sign-in code</h2>
-  <p style="margin-bottom:16px;">Use the code below to sign in. It expires in 10 minutes.</p>
-  <div style="font-size:2rem;font-weight:700;letter-spacing:0.25em;background:#f5f5f5;padding:16px 24px;border-radius:6px;display:inline-block;margin-bottom:16px;">
-    ${escapeHtml(otp)}
-  </div>
-  <p style="font-size:0.85rem;color:#666;">If you didn't request this, you can safely ignore this email.</p>
-</body>
-</html>`;
-}
-
-export function galleryOtpHtml(galleryName: string, otp: string): string {
-  return `<!DOCTYPE html>
-<html>
-<body style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#222;">
-  <h2 style="font-size:1.25rem;font-weight:700;margin-bottom:8px;">Your gallery access code</h2>
-  <p style="margin-bottom:16px;">Use the code below to access <strong>${escapeHtml(galleryName)}</strong>. It expires in 10 minutes.</p>
-  <div style="font-size:2rem;font-weight:700;letter-spacing:0.25em;background:#f5f5f5;padding:16px 24px;border-radius:6px;display:inline-block;margin-bottom:16px;">
-    ${escapeHtml(otp)}
-  </div>
-  <p style="font-size:0.85rem;color:#666;">If you didn't request this, you can safely ignore this email.</p>
+  <h2 style="font-size:1.25rem;font-weight:700;margin-bottom:8px;">Sign in to Imago</h2>
+  <p style="margin-bottom:24px;">Click the button below to sign in to the admin dashboard. This link expires in 10 minutes and can only be used once.</p>
+  <a href="${escapeHtml(magicLinkUrl)}" style="display:inline-block;background:#222;color:#fff;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:600;">
+    Sign in
+  </a>
+  <p style="margin-top:24px;font-size:0.85rem;color:#666;">If you didn't request this, you can safely ignore this email.</p>
 </body>
 </html>`;
 }

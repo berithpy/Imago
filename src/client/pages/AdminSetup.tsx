@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { FieldError } from "@/client/components/ErrorMessage";
+import { cardStyle, inputLargeStyle, fullWidthButtonStyle } from "@/client/components/ui";
 
 export function AdminSetup() {
   const navigate = useNavigate();
@@ -56,80 +58,75 @@ export function AdminSetup() {
         padding: 24,
       }}
     >
-      <div style={{ width: "100%", maxWidth: 380 }}>
-        <h1 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: 8 }}>
-          Admin Setup
-        </h1>
-        <p style={{ color: "var(--color-text-muted)", marginBottom: 32, fontSize: "0.9rem" }}>
-          Create the admin account. This can only be done once.
-        </p>
+      <div style={{ width: "100%", maxWidth: 400 }}>
+        <div style={{ ...cardStyle, padding: "32px 28px" }}>
+          <p
+            style={{
+              fontSize: "0.7rem",
+              fontWeight: 700,
+              letterSpacing: "0.12em",
+              textTransform: "uppercase",
+              color: "var(--color-text-muted)",
+              margin: "0 0 20px",
+            }}
+          >
+            Imago
+          </p>
 
-        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Your name"
-            required
-            autoFocus
-            style={inputStyle}
-          />
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="Email"
-            required
-            style={inputStyle}
-          />
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Password (min 8 characters)"
-            required
-            minLength={8}
-            style={inputStyle}
-          />
-          <input
-            type="email"
-            value={recoveryEmail}
-            onChange={(e) => setRecoveryEmail(e.target.value)}
-            placeholder="Recovery email (optional, defaults to admin email)"
-            style={inputStyle}
-          />
+          <h1 style={{ fontSize: "1.4rem", fontWeight: 700, margin: "0 0 8px" }}>
+            Admin Setup
+          </h1>
+          <p style={{ color: "var(--color-text-muted)", margin: "0 0 24px", fontSize: "0.9rem" }}>
+            Create the admin account. This can only be done once.
+          </p>
 
-          {error && (
-            <p style={{ color: "var(--color-error)", fontSize: "0.875rem" }}>{error}</p>
-          )}
+          <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Your name"
+              required
+              autoFocus
+              style={inputLargeStyle}
+            />
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Email"
+              required
+              style={inputLargeStyle}
+            />
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password (min 8 characters)"
+              required
+              minLength={8}
+              style={inputLargeStyle}
+            />
+            <input
+              type="email"
+              value={recoveryEmail}
+              onChange={(e) => setRecoveryEmail(e.target.value)}
+              placeholder="Recovery email (optional, defaults to admin email)"
+              style={inputLargeStyle}
+            />
 
-          <button type="submit" disabled={loading} style={buttonStyle}>
-            {loading ? "Creating…" : "Create Admin Account"}
-          </button>
-        </form>
+            {error && <FieldError message={error} />}
+
+            <button
+              type="submit"
+              disabled={loading}
+              style={{ ...fullWidthButtonStyle, opacity: loading ? 0.7 : 1 }}
+            >
+              {loading ? "Creating…" : "Create Admin Account"}
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   );
 }
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "12px 16px",
-  background: "var(--color-surface)",
-  border: "1px solid var(--color-border)",
-  borderRadius: "var(--radius)",
-  color: "var(--color-text)",
-  fontSize: "1rem",
-  outline: "none",
-};
-
-const buttonStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "12px 16px",
-  background: "var(--color-accent)",
-  border: "none",
-  borderRadius: "var(--radius)",
-  color: "#0f0f0f",
-  fontSize: "1rem",
-  fontWeight: 600,
-};

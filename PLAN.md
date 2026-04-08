@@ -1,100 +1,4 @@
 # Imago  Project Plan
-## Stage 9  Login Page Audit & Polish
-
-### Goal
-All authentication flows are now functional, but the login pages were built incrementally and have not been reviewed as a cohesive set. This stage audits every login surface, maps all auth flows end-to-end, identifies UX/visual gaps, and produces consistent, polished pages across the app.
-
----
-
-### 9a — Flow Inventory
-
-Map every login surface in the app and document what triggers it, what it does, and where it lands afterward. No assumptions — walk each flow manually in the browser.
-
-**Surfaces to document:**
-
-| Page | File | Trigger | Auth mechanism | Success destination |
-|---|---|---|---|---|
-| Admin setup | `AdminSetup.tsx` | First visit, no admin exists | Email + password (register) | Admin dashboard |
-| Admin login | `AdminLogin.tsx` | `/admin/login` | Email → OTP code (better-auth emailOTP) | Admin dashboard |
-| Gallery login — email | `GalleryLogin.tsx` | Private gallery, no cookie | Email → magic link (better-auth magicLink) | Gallery view |
-| Gallery login — password | `GalleryLogin.tsx` | "Use a password instead" toggle | Password → viewer JWT cookie | Gallery view |
-| Magic link callback | handled by better-auth | Click link in email | Token exchange → session cookie | `/gallery/:slug` redirect |
-
-For each flow, note:
-- Which API endpoints are called and in what order
-- What cookies/tokens are set and their lifetimes
-- What happens on error (wrong password, expired link, email not on whitelist, etc.)
-- Whether the redirect after auth lands in the right place
-
----
-
-### 9b — Visual & UX Review
-
-Walk every login page and evaluate against these criteria:
-
-- **Consistency** — do they share the same layout container, font sizes, button styles, and spacing?
-- **Branding** — does the app name/logo appear? Is the page identifiable as "Imago"?
-- **State feedback** — loading states (spinner/disabled button while request in flight), error messages, success/confirmation states
-- **Mobile** — does the form look reasonable on a narrow viewport?
-- **Empty/edge states** — what does the page look like before the user has typed anything? After a failed attempt?
-
-Document findings per page as a short checklist of what needs fixing.
-
----
-
-### 9c — Rework Login Pages
-
-Implement the fixes identified in 9b. Treat all three pages as a set so they feel like a cohesive product.
-
-Likely improvements (to be confirmed after 9b):
-- Shared card/container layout used consistently across all auth pages
-- App name (or wordmark) at the top of every auth page
-- Consistent button styles and spacing matching the rest of the app (`ui.ts` tokens)
-- Proper error display component (not raw text, not an alert)
-- Disabled + loading state on the submit button during in-flight requests
-- Clear confirmation screen after magic link is sent (already added, verify it looks good)
-- Password fallback clearly secondary (already a divider, verify styling)
-- Reasonable mobile width
-
----
-
-### 9d — End-to-End Flow Testing
-
-Manually step through every flow in the browser (both local dev and production) and verify:
-
-- [ ] Admin setup: register → lands on dashboard
-- [ ] Admin login: email → receive OTP email → enter code → lands on dashboard
-- [ ] Admin login: wrong OTP → error shown, can retry
-- [ ] Gallery login (magic link): enter whitelisted email → receive email → click link → lands on gallery
-- [ ] Gallery login (magic link): enter non-whitelisted email → clear error (403), no email sent
-- [ ] Gallery login (magic link): click expired link → clear error, not a crash
-- [ ] Gallery login (password): correct password → lands on gallery
-- [ ] Gallery login (password): wrong password → error shown
-- [ ] Public gallery: navigating directly lands on gallery without any login prompt
-- [ ] Magic link URL contains `localhost` locally and `imago.berith.moe` in production
-
-Document any failures as issues to fix before closing the stage.
-
----
-
-### 9e — Document Auth Architecture
-
-Write a short section in `DEPLOY.md` (or a new `AUTH.md`) describing:
-- The two auth systems in use (better-auth session for admin + viewer, viewer JWT cookie for password login) and why
-- How `requireViewer` middleware resolves access (public bypass → JWT cookie → better-auth session + whitelist check)
-- Environment variables required for auth to work (`BETTER_AUTH_SECRET`, `JWT_SECRET`, `APP_URL`)
-- How to test magic links locally (links go to `localhost:5173`, works via Vite proxy)
-
----
-
-### Pending from earlier work
-
-- [ ] `dedicated lightbox route` `/gallery/:slug/photo/:id` — deep-linkable URL that opens the lightbox directly; useful for sharing individual photos in notification emails
-- [ ] Lightbox route should be shareable, that means when you click on a thumnail of a picture, the route should change so that you can copy the url and share it with someone, then when you try to load the picture, you see the login page, login through email and the linked picture should load
-
----
-
----
 
 ## Stage 10  Backend Testing
 
@@ -130,8 +34,11 @@ For each test file:
 **`__tests__/auth.test.ts`**
 - `POST /api/viewer/gallery/:slug/login` — correct password issues JWT cookie, wrong password 401
 - `POST /api/viewer/gallery/:slug/login` — public gallery accepts with no password
-- `GET /api/galleries/:slug/photos` — 401 without cookie, 200 with valid cookie
-- OTP viewer login flow (Stage 9) — request OTP, verify OTP, access gallery
+- `POST /api/viewer/gallery/:slug/magic-link` — 403 for non-whitelisted email, 200 for whitelisted email (mock better-auth send)
+- `GET /api/galleries/:slug/photos` — private gallery: 401 without viewer/admin auth, 200 with valid `viewer_token`
+- `GET /api/galleries/:slug/photos` — public gallery: 200 without auth
+- `POST /api/viewer/admin/magic-link` — validates email format, always returns ok for non-leakage, triggers send only for registered admin
+- `POST /api/viewer/admin/recover-by-email` — always returns ok, triggers send only when `recovery_email` exists
 
 **`__tests__/subscribe.test.ts`**
 - `POST /api/subscribe/galleries/:slug` — inserts unverified row, sends email (mock Resend)
@@ -160,6 +67,26 @@ Add a GitHub Actions step before the deploy step:
 ```
 
 Tests must pass before `npm run deploy` is triggered. This gives confidence that schema migrations + route logic are consistent after every change.
+
+### Husky integration (local test gate)
+
+Add Husky so tests run automatically during local git workflows:
+
+1. Install and initialize Husky.
+2. Add a pre-push hook to run `npm test`.
+3. Optionally add a fast pre-commit hook (lint/typecheck only) and keep full tests in pre-push for speed.
+
+Suggested commands:
+
+```bash
+npm install -D husky
+npx husky init
+npx husky add .husky/pre-push "npm test"
+```
+
+Policy:
+- If tests fail locally, push is blocked.
+- CI still runs `npm test` as the final protection before deploy.
 
 ---
 
@@ -200,7 +127,6 @@ Recommended order to reach a shippable, production-quality v1:
 
 | Priority | Stage | Why first |
 |---|---|---|
-| 1 | **Stage 9** — Resend + email auth | Core usability: viewers can't be whitelisted, subscribers get no emails. Blocks real-world use. |
-| 2 | **Stage 10** — Backend testing | Quality gate before the big Stage 11 refactor. Catches regressions from Stage 9 changes too. |
-| 3 | **Stage 11** — Multitenancy | Major architectural change. Much safer with a test suite in place. Path-prefix approach first; subdomain as a follow-up. |
+| 1 | **Stage 10** — Backend testing | Establishes a quality gate for route logic, schema changes, and deploy safety. |
+| 2 | **Stage 11** — Multitenancy | Major architectural change. Much safer with a test suite in place. Path-prefix approach first; subdomain as a follow-up. |
 

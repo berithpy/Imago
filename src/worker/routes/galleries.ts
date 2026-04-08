@@ -74,6 +74,39 @@ galleryRoutes.get("/:slug/export", requireViewer as any, async (c) => {
 });
 
 // ------------------------------------------------------------------
+// Protected: fetch a single photo by id (viewer JWT required)
+// Useful for deep-linking to a photo that may not be in the first page.
+// ------------------------------------------------------------------
+galleryRoutes.get("/:slug/photos/:photoId", requireViewer as any, async (c) => {
+  const { slug, photoId } = c.req.param();
+
+  const gallery = await c.env.DB.prepare(
+    "SELECT id FROM galleries WHERE slug = ? AND deleted_at IS NULL"
+  )
+    .bind(slug)
+    .first<{ id: string }>();
+
+  if (!gallery) return c.json({ error: "Gallery not found" }, 404);
+
+  const photo = await c.env.DB.prepare(
+    "SELECT id, r2_key, original_name, size, uploaded_at, sort_order FROM photos WHERE gallery_id = ? AND id = ?"
+  )
+    .bind(gallery.id, photoId)
+    .first<{
+      id: string;
+      r2_key: string;
+      original_name: string;
+      size: number;
+      uploaded_at: number;
+      sort_order: number;
+    }>();
+
+  if (!photo) return c.json({ error: "Photo not found" }, 404);
+
+  return c.json({ photo });
+});
+
+// ------------------------------------------------------------------
 // Protected: list photos in a gallery (viewer JWT required)
 // ------------------------------------------------------------------
 galleryRoutes.get("/:slug/photos", requireViewer as any, async (c) => {

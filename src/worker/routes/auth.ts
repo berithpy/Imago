@@ -52,7 +52,7 @@ viewerRoutes.post("/gallery/:slug/login", async (c) => {
 // ------------------------------------------------------------------
 viewerRoutes.post("/gallery/:slug/magic-link", async (c) => {
   const { slug } = c.req.param();
-  const { email } = await c.req.json<{ email: string }>();
+  const { email, callbackPath } = await c.req.json<{ email: string; callbackPath?: string }>();
 
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return c.json({ error: "Valid email required" }, 400);
@@ -69,11 +69,17 @@ viewerRoutes.post("/gallery/:slug/magic-link", async (c) => {
   ).bind(gallery.id, normalised).first();
   if (!allowed) return c.json({ error: "Email not on access list" }, 403);
 
+  const defaultCallback = `/gallery/${slug}`;
+  const safeCallback =
+    callbackPath && callbackPath.startsWith(defaultCallback) && !callbackPath.startsWith("//")
+      ? callbackPath
+      : defaultCallback;
+
   const origin = new URL(c.req.raw.url).origin;
   await auth(c.env, origin).api.signInMagicLink({
     body: {
       email: normalised,
-      callbackURL: `/gallery/${slug}`,
+      callbackURL: safeCallback,
     },
     headers: c.req.raw.headers,
   });
@@ -129,13 +135,47 @@ viewerRoutes.post("/admin/recover-by-email", async (c) => {
 
   const origin = new URL(c.req.raw.url).origin;
   try {
-    await auth(c.env, origin).api.sendVerificationOTP({
-      body: { email: row.value, type: "sign-in" },
+    await auth(c.env, origin).api.signInMagicLink({
+      body: { email: row.value, callbackURL: "/admin" },
+      headers: c.req.raw.headers,
     });
   } catch (err) {
-    console.error("[recover-by-email] Failed to send OTP:", err);
+    console.error("[recover-by-email] Failed to send magic link:", err);
   }
 
+  return c.json({ ok: true });
+});
+
+// ------------------------------------------------------------------
+// Admin: magic-link sign-in — guard: only send to the registered admin email
+// No auth required (this IS the login entry point)
+// Always returns ok to avoid leaking whether the email is admin.
+// ------------------------------------------------------------------
+viewerRoutes.post("/admin/magic-link", async (c) => {
+  const body = await c.req.json<{ email?: string }>();
+  const email = (body.email ?? "").trim().toLowerCase();
+
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return c.json({ error: "Valid email required" }, 400);
+  }
+
+  const adminRow = await c.env.DB.prepare(
+    "SELECT email FROM user LIMIT 1"
+  ).first<{ email: string }>();
+
+  if (adminRow && adminRow.email.toLowerCase() === email) {
+    const origin = new URL(c.req.raw.url).origin;
+    try {
+      await auth(c.env, origin).api.signInMagicLink({
+        body: { email, callbackURL: "/admin" },
+        headers: c.req.raw.headers,
+      });
+    } catch (err) {
+      console.error("[admin/magic-link] Failed to send magic link:", err);
+    }
+  }
+
+  // Always return ok — no info leakage about whether email matched
   return c.json({ ok: true });
 });
 
