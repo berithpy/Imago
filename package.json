@@ -14,7 +14,9 @@
 		"db:migrate:local": "wrangler d1 migrations apply imago-db --local",
 		"db:migrate:remote": "wrangler d1 migrations apply imago-db --remote",
 		"db:create": "wrangler d1 create imago-db",
-		"test": "vitest run"
+		"test:routes": "vitest run src/worker/routes/__tests__",
+		"test": "vitest run",
+		"prepare": "husky"
 	},
 	"dependencies": {
 		"@hono/node-server": "^1.19.9",
@@ -36,6 +38,7 @@
 		"@types/react": "^19.2.14",
 		"@types/react-dom": "^19.2.3",
 		"drizzle-kit": "^0.31.10",
+		"husky": "^9.1.7",
 		"typescript": "^5.9.3",
 		"vitest": "^3.2.4",
 		"wrangler": "^4.68.1"
