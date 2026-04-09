@@ -2,6 +2,7 @@ import { useState } from "react";
 import { FieldError } from "@/client/components/ErrorMessage";
 import { cardStyle, inputStyle, accentButtonStyle } from "@/client/components/ui";
 import { PasswordField } from "@/client/components/PasswordField";
+import { EmailListInput } from "@/client/components/EmailListInput";
 
 type Props = {
   onCreated: () => void;
@@ -16,7 +17,6 @@ export function CreateGalleryForm({ onCreated, onCancel }: Props) {
   const [isPublic, setIsPublic] = useState(false);
   const [eventDate, setEventDate] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
-  const [emailInput, setEmailInput] = useState("");
   const [emailList, setEmailList] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -31,12 +31,9 @@ export function CreateGalleryForm({ onCreated, onCancel }: Props) {
     if (!isPublic) setPassword(""); // clear password when switching to public
   }
 
-  function handleAddEmailToList() {
-    const trimmed = emailInput.trim().toLowerCase();
-    if (!trimmed || emailList.includes(trimmed)) { setEmailInput(""); return; }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return;
-    setEmailList((prev) => [...prev, trimmed]);
-    setEmailInput("");
+  function handleAddEmailToList(email: string) {
+    if (!email || emailList.includes(email)) return;
+    setEmailList((prev) => [...prev, email]);
   }
 
   function handleRemoveFromList(email: string) {
@@ -183,69 +180,20 @@ export function CreateGalleryForm({ onCreated, onCancel }: Props) {
       </div>
 
       {/* Email whitelist */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <label style={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>
-          Allowed email addresses{" "}
-          <span style={{ fontStyle: "italic" }}>(optional — passwordless OTP access; invite emails are sent on creation)</span>
-        </label>
-        {emailList.length > 0 && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {emailList.map((email) => (
-              <span
-                key={email}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 4,
-                  padding: "3px 8px",
-                  background: "var(--color-bg)",
-                  border: "1px solid var(--color-border)",
-                  borderRadius: "var(--radius)",
-                  fontSize: "0.8rem",
-                }}
-              >
-                {email}
-                <button
-                  type="button"
-                  onClick={() => handleRemoveFromList(email)}
-                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-muted)", padding: 0, lineHeight: 1, fontSize: "0.8rem" }}
-                  title="Remove"
-                >
-                  ✕
-                </button>
-              </span>
-            ))}
-          </div>
-        )}
-        <div style={{ display: "flex", gap: 8 }}>
-          <input
-            type="email"
-            placeholder="viewer@example.com"
-            value={emailInput}
-            onChange={(e) => setEmailInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddEmailToList(); } }}
-            style={{ ...inputStyle, flex: 1 }}
-          />
-          <button
-            type="button"
-            onClick={handleAddEmailToList}
-            disabled={!emailInput.trim()}
-            style={{
-              padding: "8px 14px",
-              background: "none",
-              border: "1px solid var(--color-border)",
-              borderRadius: "var(--radius)",
-              color: "var(--color-text)",
-              fontSize: "0.85rem",
-              cursor: emailInput.trim() ? "pointer" : "not-allowed",
-              whiteSpace: "nowrap",
-            }}
-          >
-            Add
-          </button>
-        </div>
-      </div>
-
+      <EmailListInput
+        emails={emailList}
+        onAdd={handleAddEmailToList}
+        onRemove={handleRemoveFromList}
+        placeholder="viewer@example.com"
+        label={
+          <>
+            Allowed email addresses{" "}
+            <span style={{ fontStyle: "italic" }}>
+              (optional — passwordless OTP access; invite emails are sent on creation)
+            </span>
+          </>
+        }
+      />
       {error && <FieldError message={error} />}
 
       <div style={{ display: "flex", gap: 8 }}>

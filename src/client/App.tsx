@@ -5,7 +5,7 @@ import { GalleryView } from "@/client/pages/GalleryView";
 import { AdminLogin } from "@/client/pages/AdminLogin";
 import { AdminDashboard } from "@/client/pages/AdminDashboard";
 import { AdminSetup } from "@/client/pages/AdminSetup";
-import { AdminGallery } from "@/client/pages/AdminGallery";
+import { GalleryManagementPage } from "@/client/pages/GalleryManagementPage";
 
 export default function App() {
   return (
@@ -19,7 +19,7 @@ export default function App() {
       <Route path="/admin/setup" element={<AdminSetup />} />
       <Route path="/admin/login" element={<AdminLogin />} />
       <Route path="/admin" element={<AdminDashboard />} />
-      <Route path="/admin/galleries/:id" element={<AdminGallery />} />
+      <Route path="/admin/galleries/:id" element={<GalleryManagementPage />} />
 
       {/* Fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />
