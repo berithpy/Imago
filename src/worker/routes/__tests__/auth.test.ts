@@ -148,6 +148,21 @@ describe("auth routes", () => {
     expect(payload.nextCursor).toBeNull();
   });
 
+  it("GET /api/galleries/:slug/photos returns 403 when viewer token is for a different private gallery", async () => {
+    const loginRes = await harness.request(`/api/viewer/gallery/${fixtures.privateLogin.slug}/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ password: "correct-pass" }),
+    });
+    const cookie = loginRes.headers.get("set-cookie") ?? "";
+
+    const res = await harness.request(`/api/galleries/${fixtures.privatePhotos.slug}/photos`, {
+      headers: { cookie },
+    });
+
+    expect(res.status).toBe(403);
+  });
+
   it("GET /api/galleries/:slug/photos returns 200 for public gallery without auth", async () => {
     const res = await harness.request(`/api/galleries/${fixtures.publicPhotos.slug}/photos`);
     expect(res.status).toBe(200);
