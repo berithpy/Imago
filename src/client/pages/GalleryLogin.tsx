@@ -2,20 +2,22 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { createAuthClient } from "better-auth/client";
 import { LoginCard } from "@/client/components/LoginCard";
+import { useTenant } from "@/client/lib/tenantContext";
 
 const authClient = createAuthClient({ baseURL: `${window.location.origin}/api/auth` });
 
 export function GalleryLogin() {
-  const { slug } = useParams<{ slug: string }>();
+  const { gallerySlug } = useParams<{ gallerySlug: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+  const { apiBase, routeBase } = useTenant();
   const [isAdmin, setIsAdmin] = useState(false);
   const [galleryId, setGalleryId] = useState<string | null>(null);
   const [galleryName, setGalleryName] = useState<string | null>(null);
   const [bypassing, setBypassing] = useState(false);
   const [checking, setChecking] = useState(true);
 
-  const fallbackPath = `/gallery/${slug}`;
+  const fallbackPath = `${routeBase}/${gallerySlug}`;
   const requestedNext = new URLSearchParams(location.search).get("next") ?? "";
   const safeNextPath =
     requestedNext.startsWith(fallbackPath) && !requestedNext.startsWith("//")
@@ -23,7 +25,7 @@ export function GalleryLogin() {
       : fallbackPath;
 
   useEffect(() => {
-    fetch(`/api/galleries/${slug}`)
+    fetch(`${apiBase}/galleries/${gallerySlug}`)
       .then((r) => r.ok ? r.json() as Promise<{ gallery?: { id: string; name: string; is_public: number } }> : null)
       .then((d) => {
         if (d?.gallery?.id) setGalleryId(d.gallery.id);
@@ -35,13 +37,13 @@ export function GalleryLogin() {
     authClient.getSession({ fetchOptions: { credentials: "include" } })
       .then(({ data }) => { if (data?.session) setIsAdmin(true); })
       .catch(() => { });
-  }, [slug]);
+  }, [gallerySlug]);
 
   async function handleAdminBypass() {
     if (!galleryId) return;
     setBypassing(true);
     try {
-      const res = await fetch(`/api/admin/galleries/${galleryId}/viewer-bypass`, {
+      const res = await fetch(`${apiBase}/admin/galleries/${galleryId}/viewer-bypass`, {
         method: "POST",
         credentials: "include",
       });
@@ -56,7 +58,7 @@ export function GalleryLogin() {
   }
 
   async function handleMagicLink(email: string) {
-    const res = await fetch(`/api/viewer/gallery/${slug}/magic-link`, {
+    const res = await fetch(`${apiBase}/viewer/gallery/${gallerySlug}/magic-link`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
@@ -73,7 +75,7 @@ export function GalleryLogin() {
   }
 
   async function handlePassword(password: string) {
-    const res = await fetch(`/api/viewer/gallery/${slug}/login`, {
+    const res = await fetch(`${apiBase}/viewer/gallery/${gallerySlug}/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",

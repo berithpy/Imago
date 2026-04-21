@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { SpinnerOverlay } from "@/client/components/Spinner";
 import { ErrorMessage } from "@/client/components/ErrorMessage";
 import { EmptyState } from "@/client/components/EmptyState";
+import { useTenant } from "@/client/lib/tenantContext";
 
 type Gallery = {
   id: string;
@@ -17,6 +18,7 @@ type Gallery = {
 };
 
 export function GalleryIndex() {
+  const { apiBase, routeBase } = useTenant();
   const [galleries, setGalleries] = useState<Gallery[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -24,7 +26,7 @@ export function GalleryIndex() {
   function load() {
     setError(null);
     setLoading(true);
-    fetch("/api/galleries")
+    fetch(`${apiBase}/galleries`)
       .then((r) => r.json() as Promise<{ galleries: Gallery[] }>)
       .then((data) => setGalleries(data.galleries ?? []))
       .catch(() => setError("Failed to load galleries"))
@@ -52,7 +54,7 @@ export function GalleryIndex() {
           {galleries.map((g) => (
             <Link
               key={g.id}
-              to={g.is_public ? `/gallery/${g.slug}` : `/gallery/${g.slug}/login`}
+              to={g.is_public ? `${routeBase}/${g.slug}` : `${routeBase}/${g.slug}/login`}
               style={{
                 display: "block",
                 padding: "20px 24px",

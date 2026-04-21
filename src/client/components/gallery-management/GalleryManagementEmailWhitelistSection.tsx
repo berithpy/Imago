@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { EmailListInput } from "@/client/components/EmailListInput";
 import type { AllowedEmail } from "@/client/lib/galleryManagement";
+import { useTenant } from "@/client/lib/tenantContext";
 
 type Props = {
   galleryId: string;
 };
 
 export function GalleryManagementEmailWhitelistSection({ galleryId }: Props) {
+  const { apiBase } = useTenant();
   const [allowedEmails, setAllowedEmails] = useState<AllowedEmail[]>([]);
   const [addingEmail, setAddingEmail] = useState(false);
   const [removingEmail, setRemovingEmail] = useState<string | null>(null);
@@ -17,7 +19,7 @@ export function GalleryManagementEmailWhitelistSection({ galleryId }: Props) {
 
   async function loadAllowedEmails() {
     try {
-      const res = await fetch(`/api/admin/galleries/${galleryId}/allowed-emails`, {
+      const res = await fetch(`${apiBase}/admin/galleries/${galleryId}/allowed-emails`, {
         credentials: "include",
       });
       if (!res.ok) return;
@@ -31,7 +33,7 @@ export function GalleryManagementEmailWhitelistSection({ galleryId }: Props) {
   async function handleAddEmail(email: string) {
     setAddingEmail(true);
     try {
-      const res = await fetch(`/api/admin/galleries/${galleryId}/allowed-emails`, {
+      const res = await fetch(`${apiBase}/admin/galleries/${galleryId}/allowed-emails`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -59,7 +61,7 @@ export function GalleryManagementEmailWhitelistSection({ galleryId }: Props) {
   async function handleRemoveEmail(email: string) {
     setRemovingEmail(email);
     try {
-      await fetch(`/api/admin/galleries/${galleryId}/allowed-emails/${encodeURIComponent(email)}`, {
+      await fetch(`${apiBase}/admin/galleries/${galleryId}/allowed-emails/${encodeURIComponent(email)}`, {
         method: "DELETE",
         credentials: "include",
       });

@@ -6,14 +6,17 @@ import {
   subscriptionConfirmedHtml,
   unsubscribeConfirmedHtml,
 } from "../lib/email";
+import { tenantClause } from "../lib/db";
+import type { TenantVariables } from "../middleware/tenant";
 
-export const subscribeRoutes = new Hono<{ Bindings: Bindings }>();
+export const subscribeRoutes = new Hono<{ Bindings: Bindings; Variables: TenantVariables }>();
 
 // ------------------------------------------------------------------
 // Subscribe to gallery notifications (double opt-in)
 // ------------------------------------------------------------------
 subscribeRoutes.post("/galleries/:slug", async (c) => {
   const { slug } = c.req.param();
+  const [tSql, tBindings] = tenantClause(c.get("tenantId"));
   const { email } = await c.req.json<{ email: string }>();
 
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -21,9 +24,9 @@ subscribeRoutes.post("/galleries/:slug", async (c) => {
   }
 
   const gallery = await c.env.DB.prepare(
-    "SELECT id, name FROM galleries WHERE slug = ?"
+    `SELECT id, name FROM galleries WHERE slug = ?${tSql}`
   )
-    .bind(slug)
+    .bind(slug, ...tBindings)
     .first<{ id: string; name: string }>();
 
   if (!gallery) return c.json({ error: "Gallery not found" }, 404);

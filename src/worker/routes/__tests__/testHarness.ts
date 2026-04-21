@@ -17,6 +17,13 @@ export type GallerySeedOptions = {
   slug: string;
   isPublic: boolean;
   password?: string;
+  tenantId?: string;
+};
+
+export type UserSeedOptions = {
+  email: string;
+  name?: string;
+  isSuperAdmin?: boolean;
 };
 
 export type WorkerTestHarness = {
@@ -25,6 +32,8 @@ export type WorkerTestHarness = {
   runSql: (sql: string, bindings?: unknown[]) => Promise<void>;
   resetDb: () => Promise<void>;
   seedGallery: (opts: GallerySeedOptions) => Promise<{ id: string; slug: string; password: string }>;
+  seedTenant: (slug: string, name?: string) => Promise<{ id: string; slug: string }>;
+  seedUser: (opts: UserSeedOptions) => Promise<{ id: string; email: string }>;
   dispose: () => Promise<void>;
 };
 
@@ -62,6 +71,10 @@ async function resetDb(db: D1Database) {
     "DELETE FROM gallery_subscribers",
     "DELETE FROM galleries",
     "DELETE FROM app_config",
+    "DELETE FROM invitation",
+    "DELETE FROM member",
+    "DELETE FROM organization",
+    "DELETE FROM tenants",
     "DELETE FROM user",
   ];
 
@@ -103,11 +116,29 @@ export async function createWorkerTestHarness(): Promise<WorkerTestHarness> {
     const id = crypto.randomUUID();
 
     await runSql(
-      "INSERT INTO galleries (id, name, slug, password_hash, is_public, created_at) VALUES (?, ?, ?, ?, ?, unixepoch())",
-      [id, `Gallery ${opts.slug}`, opts.slug, passwordHash, opts.isPublic ? 1 : 0]
+      "INSERT INTO galleries (id, tenant_id, name, slug, password_hash, is_public, created_at) VALUES (?, ?, ?, ?, ?, ?, unixepoch())",
+      [id, opts.tenantId ?? null, `Gallery ${opts.slug}`, opts.slug, passwordHash, opts.isPublic ? 1 : 0]
     );
 
     return { id, slug: opts.slug, password };
+  };
+
+  const seedTenant = async (slug: string, name?: string) => {
+    const id = crypto.randomUUID();
+    await runSql(
+      "INSERT INTO tenants (id, slug, name, created_at) VALUES (?, ?, ?, unixepoch())",
+      [id, slug, name ?? slug]
+    );
+    return { id, slug };
+  };
+
+  const seedUser = async (opts: UserSeedOptions) => {
+    const id = crypto.randomUUID();
+    await runSql(
+      "INSERT INTO user (id, name, email, emailVerified, is_super_admin, createdAt, updatedAt) VALUES (?, ?, ?, 1, ?, unixepoch(), unixepoch())",
+      [id, opts.name ?? opts.email, opts.email, opts.isSuperAdmin ? 1 : 0]
+    );
+    return { id, email: opts.email };
   };
 
   return {
@@ -116,6 +147,8 @@ export async function createWorkerTestHarness(): Promise<WorkerTestHarness> {
     runSql,
     resetDb: async () => resetDb(env.DB),
     seedGallery,
+    seedTenant,
+    seedUser,
     dispose: async () => {
       await platform.dispose();
     },

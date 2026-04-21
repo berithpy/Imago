@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { accentButtonStyle } from "@/client/components/ui";
+import { useTenant } from "@/client/lib/tenantContext";
 
 type Props = {
   galleryId: string;
@@ -15,6 +16,7 @@ export function GalleryManagementUploadControl({
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { apiBase } = useTenant();
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
@@ -27,7 +29,7 @@ export function GalleryManagementUploadControl({
         setUploadProgress(`Uploading ${i + 1} / ${files.length}: ${file.name}`);
         const fd = new FormData();
         fd.append("file", file);
-        await fetch(`/api/admin/galleries/${galleryId}/photos`, {
+        await fetch(`${apiBase}/admin/galleries/${galleryId}/photos`, {
           method: "POST",
           credentials: "include",
           body: fd,

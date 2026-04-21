@@ -9,12 +9,14 @@ import { GalleryManagementEmailWhitelistSection } from "@/client/components/gall
 import { GalleryManagementPhotoGrid } from "@/client/components/gallery-management/GalleryManagementPhotoGrid";
 import { GalleryManagementUploadControl } from "@/client/components/gallery-management/GalleryManagementUploadControl";
 import type { Gallery, Photo } from "@/client/lib/galleryManagement";
+import { useTenant } from "@/client/lib/tenantContext";
 
 const authClient = createAuthClient({ baseURL: `${window.location.origin}/api/auth` });
 
 export function GalleryManagementPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { apiBase, routeBase } = useTenant();
   const [gallery, setGallery] = useState<Gallery | null>(null);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -22,31 +24,31 @@ export function GalleryManagementPage() {
 
   useEffect(() => {
     if (!id) {
-      navigate("/admin");
+      navigate(`${routeBase}/admin`);
       return;
     }
 
     authClient.getSession({ fetchOptions: { credentials: "include" } }).then(({ data }) => {
       if (!data?.session) {
-        navigate("/admin/login");
+        navigate(`${routeBase}/admin/login`);
         return;
       }
       void loadPhotos(id);
     });
-  }, [id, navigate]);
+  }, [id, navigate, routeBase]);
 
   async function loadPhotos(galleryId: string) {
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/galleries/${galleryId}/photos`, {
+      const res = await fetch(`${apiBase}/admin/galleries/${galleryId}/photos`, {
         credentials: "include",
       });
       if (res.status === 401) {
-        navigate("/admin/login");
+        navigate(`${routeBase}/admin/login`);
         return;
       }
       if (res.status === 404) {
-        navigate("/admin");
+        navigate(`${routeBase}/admin`);
         return;
       }
       if (!res.ok) throw new Error(`Server error ${res.status}`);

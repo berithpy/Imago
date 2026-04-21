@@ -304,8 +304,9 @@ describe("admin routes", () => {
   });
 
   it("GET /users and POST /users/invite work and create admin log entry", async () => {
+    await harness.seedUser({ email: "admin@example.com", isSuperAdmin: true });
     await harness.runSql(
-      "INSERT INTO user (id, name, email, emailVerified, createdAt, updatedAt) VALUES (?, ?, ?, ?, unixepoch(), unixepoch())",
+      "INSERT INTO user (id, name, email, emailVerified, is_super_admin, createdAt, updatedAt) VALUES (?, ?, ?, ?, 0, unixepoch(), unixepoch())",
       [crypto.randomUUID(), "Existing", "existing@example.com", 1]
     );
 

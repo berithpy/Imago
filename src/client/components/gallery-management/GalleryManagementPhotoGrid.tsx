@@ -2,6 +2,7 @@ import { PhotoThumbnail } from "@/client/components/PhotoThumbnail";
 import { cardSmallStyle, formatSize, iconButtonStyle } from "@/client/components/ui";
 import type { Gallery, Photo } from "@/client/lib/galleryManagement";
 import { useState } from "react";
+import { useTenant } from "@/client/lib/tenantContext";
 
 type Props = {
   galleryId: string;
@@ -20,12 +21,13 @@ export function GalleryManagementPhotoGrid({
 }: Props) {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [settingBanner, setSettingBanner] = useState(false);
+  const { apiBase } = useTenant();
 
   async function handleDelete(photoId: string, name: string) {
     if (!confirm(`Delete "${name}"?`)) return;
     setDeleting(photoId);
     try {
-      await fetch(`/api/admin/galleries/${galleryId}/photos/${photoId}`, {
+      await fetch(`${apiBase}/admin/galleries/${galleryId}/photos/${photoId}`, {
         method: "DELETE",
         credentials: "include",
       });
@@ -45,7 +47,7 @@ export function GalleryManagementPhotoGrid({
       : (photos.find((photo) => photo.id === photoId)?.r2_key ?? null);
 
     try {
-      await fetch(`/api/admin/galleries/${galleryId}/banner`, {
+      await fetch(`${apiBase}/admin/galleries/${galleryId}/banner`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

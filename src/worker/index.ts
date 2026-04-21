@@ -6,6 +6,8 @@ import { galleryRoutes } from "./routes/galleries";
 import { imageRoutes } from "./routes/images";
 import { adminRoutes } from "./routes/admin";
 import { subscribeRoutes } from "./routes/subscribe";
+import { requireTenant, type TenantVariables } from "./middleware/tenant";
+import { tenantsRoutes } from "./routes/tenants";
 
 export type Bindings = {
   IMAGES_BUCKET: R2Bucket;
@@ -43,9 +45,20 @@ app.on(["GET", "POST"], "/api/auth/*", (c) => {
 });
 app.route("/api/viewer", viewerRoutes);
 app.route("/api/admin", adminRoutes);
+app.route("/api/admin/tenants", tenantsRoutes);
 app.route("/api/galleries", galleryRoutes);
 app.route("/api/images", imageRoutes);
 app.route("/api/subscribe", subscribeRoutes);
+
+// Tenant-scoped routes: /api/t/:tenantSlug/{admin,viewer,galleries,images,subscribe}
+const tenantApp = new Hono<{ Bindings: Bindings; Variables: TenantVariables }>();
+tenantApp.use("/*", requireTenant);
+tenantApp.route("/admin", adminRoutes);
+tenantApp.route("/viewer", viewerRoutes);
+tenantApp.route("/galleries", galleryRoutes);
+tenantApp.route("/images", imageRoutes);
+tenantApp.route("/subscribe", subscribeRoutes);
+app.route("/api/t/:tenantSlug", tenantApp);
 
 // Health check
 app.get("/api/health", (c) => c.json({ ok: true }));

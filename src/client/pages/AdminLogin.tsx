@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { createAuthClient } from "better-auth/client";
 import { LoginCard } from "@/client/components/LoginCard";
+import { useTenant } from "@/client/lib/tenantContext";
 
 const authClient = createAuthClient({
   baseURL: `${window.location.origin}/api/auth`,
@@ -9,13 +10,14 @@ const authClient = createAuthClient({
 
 export function AdminLogin() {
   const navigate = useNavigate();
+  const { routeBase } = useTenant();
   const [checkingSession, setCheckingSession] = useState(true);
 
   useEffect(() => {
     authClient
       .getSession({ fetchOptions: { credentials: "include" } })
       .then((res: any) => {
-        if (res?.data?.session) navigate("/admin", { replace: true });
+        if (res?.data?.session) navigate(`${routeBase}/admin`, { replace: true });
       })
       .catch(() => { })
       .finally(() => setCheckingSession(false));

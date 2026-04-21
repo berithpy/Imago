@@ -7,6 +7,7 @@ import { EmptyState } from "@/client/components/EmptyState";
 import { PhotoThumbnail } from "@/client/components/PhotoThumbnail";
 import { Lightbox } from "@/client/components/Lightbox";
 import { exportGallery } from "@/client/lib/exportGallery";
+import { useTenant } from "@/client/lib/tenantContext";
 
 type Photo = {
   id: string;
@@ -75,16 +76,17 @@ function MasonryGrid({
 }
 
 export function GalleryView() {
-  const { slug } = useParams<{ slug: string }>();
+  const { gallerySlug } = useParams<{ gallerySlug: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+  const { apiBase, routeBase } = useTenant();
   const getPhotoIdFromPath = useCallback((pathname: string): string | undefined => {
-    if (!slug) return undefined;
-    const prefix = `/gallery/${slug}/photo/`;
+    if (!gallerySlug) return undefined;
+    const prefix = `${routeBase}/${gallerySlug}/photo/`;
     if (!pathname.startsWith(prefix)) return undefined;
     const rawPhotoId = pathname.slice(prefix.length).split("/")[0];
     return rawPhotoId ? decodeURIComponent(rawPhotoId) : undefined;
-  }, [slug]);
+  }, [gallerySlug, routeBase]);
   const [routePhotoId, setRoutePhotoId] = useState<string | undefined>(() => getPhotoIdFromPath(window.location.pathname));
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -132,7 +134,7 @@ export function GalleryView() {
 
   const fetchPhotos = useCallback(
     async (cursor?: string): Promise<FetchPhotosResult> => {
-      const url = `/api/galleries/${slug}/photos${cursor ? `?cursor=${cursor}` : ""}`;
+      const url = `${apiBase}/galleries/${gallerySlug}/photos${cursor ? `?cursor=${cursor}` : ""}`;
       const res = await fetch(url, { credentials: "include" });
 
       if (res.status === 401 || res.status === 403) {
@@ -142,17 +144,17 @@ export function GalleryView() {
       const data = await res.json() as { photos: Photo[]; nextCursor: string | null; total: number };
       return { needsAuth: false, photos: data.photos ?? [], nextCursor: data.nextCursor ?? null, total: data.total ?? 0 };
     },
-    [slug]
+    [gallerySlug, apiBase]
   );
 
   const fetchSinglePhoto = useCallback(
     async (photoId: string): Promise<Photo | null> => {
-      const res = await fetch(`/api/galleries/${slug}/photos/${photoId}`, { credentials: "include" });
+      const res = await fetch(`${apiBase}/galleries/${gallerySlug}/photos/${photoId}`, { credentials: "include" });
       if (!res.ok) return null;
       const data = await res.json() as { photo?: Photo };
       return data.photo ?? null;
     },
-    [slug]
+    [gallerySlug, apiBase]
   );
 
   // Load gallery metadata and the first photo page whenever the gallery slug changes.
@@ -166,7 +168,7 @@ export function GalleryView() {
 
       // 1. Load gallery metadata — handle 410 (expired) and 404
       try {
-        const metaRes = await fetch(`/api/galleries/${slug}`);
+        const metaRes = await fetch(`${apiBase}/galleries/${gallerySlug}`);
         if (cancelled) return;
         if (metaRes.status === 410) { setExpired(true); setLoading(false); return; }
         const d = await metaRes.json() as { gallery?: { name: string; is_public: number; banner_r2_key: string | null; event_date: number | null } };
@@ -187,7 +189,7 @@ export function GalleryView() {
         if (data.needsAuth) {
           // Only redirect to password login for private galleries
           if (!isPublicGallery) {
-            navigate(`/gallery/${slug}/login?next=${encodeURIComponent(window.location.pathname)}`, { replace: true });
+            navigate(`${routeBase}/${gallerySlug}/login?next=${encodeURIComponent(window.location.pathname)}`, { replace: true });
           }
           return;
         }
@@ -204,7 +206,7 @@ export function GalleryView() {
 
     init();
     return () => { cancelled = true; };
-  }, [slug, navigate, fetchPhotos]);
+  }, [gallerySlug, navigate, fetchPhotos, apiBase, routeBase]);
 
   const loadMore = useCallback(async () => {
     if (!nextCursor || loadingMoreRef.current) return;
@@ -214,7 +216,7 @@ export function GalleryView() {
       const data = await fetchPhotos(nextCursor);
       if (data.needsAuth) {
         if (!isPublic) {
-          navigate(`/gallery/${slug}/login?next=${encodeURIComponent(window.location.pathname)}`, { replace: true });
+          navigate(`${routeBase}/${gallerySlug}/login?next=${encodeURIComponent(window.location.pathname)}`, { replace: true });
         }
         return;
       }
@@ -225,7 +227,7 @@ export function GalleryView() {
       loadingMoreRef.current = false;
       setLoadingMore(false);
     }
-  }, [nextCursor, slug, isPublic, navigate, fetchPhotos]);
+  }, [nextCursor, gallerySlug, isPublic, navigate, fetchPhotos]);
 
   // Resolve the active route photo into a full lightbox object, fetching it if needed.
   useEffect(() => {
@@ -296,18 +298,18 @@ export function GalleryView() {
     (photo: Photo) => {
       setLightbox(photo);
       // Shallow URL update: keep grid data/state intact while reflecting modal state.
-      window.history.pushState({}, "", `/gallery/${slug}/photo/${encodeURIComponent(photo.id)}`);
+      window.history.pushState({}, "", `${routeBase}/${gallerySlug}/photo/${encodeURIComponent(photo.id)}`);
       setRoutePhotoId(photo.id);
     },
-    [slug]
+    [gallerySlug, routeBase]
   );
 
   const closeLightbox = useCallback(() => {
     setLightbox(null);
     // Mirror modal close in URL without triggering a route-level navigation.
-    window.history.pushState({}, "", `/gallery/${slug}`);
+    window.history.pushState({}, "", `${routeBase}/${gallerySlug}`);
     setRoutePhotoId(undefined);
-  }, [slug]);
+  }, [gallerySlug, routeBase]);
 
   const setSentinel = useCallback((node: HTMLDivElement | null) => {
     if (observerRef.current) {
@@ -327,7 +329,7 @@ export function GalleryView() {
     setExporting(true);
     setExportProgress("Preparing export…");
     try {
-      const res = await fetch(`/api/galleries/${slug}/export`, { credentials: "include" });
+      const res = await fetch(`${apiBase}/galleries/${gallerySlug}/export`, { credentials: "include" });
       if (!res.ok) throw new Error("Export failed");
       const data = await res.json() as { galleryName: string; photos: { name: string; url: string }[] };
       await exportGallery(data.galleryName, data.photos, (done, total) => {
@@ -381,7 +383,7 @@ export function GalleryView() {
           >
             <div style={{ minWidth: 0 }}>
               <h1 style={{ fontSize: "1.75rem", fontWeight: 700, margin: 0, lineHeight: 1.2 }}>
-                {galleryName || slug}
+                {galleryName || gallerySlug}
               </h1>
               {eventDate && (
                 <div style={{ fontSize: "0.85rem", color: "var(--color-text-muted)", marginTop: 4 }}>

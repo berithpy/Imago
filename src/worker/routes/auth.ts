@@ -5,20 +5,23 @@ import { Bindings } from "../index";
 import { pbkdf2Verify } from "../lib/crypto";
 import { auth } from "../lib/auth";
 import { logAdminEvent } from "../lib/adminLog";
+import { tenantClause } from "../lib/db";
+import type { TenantVariables } from "../middleware/tenant";
 
-export const viewerRoutes = new Hono<{ Bindings: Bindings }>();
+export const viewerRoutes = new Hono<{ Bindings: Bindings; Variables: TenantVariables }>();
 
 // ------------------------------------------------------------------
 // Viewer: unlock a gallery with its password
 // ------------------------------------------------------------------
 viewerRoutes.post("/gallery/:slug/login", async (c) => {
   const { slug } = c.req.param();
+  const [tSql, tBindings] = tenantClause(c.get("tenantId"));
   const body = await c.req.json<{ password?: string }>();
 
   const gallery = await c.env.DB.prepare(
-    "SELECT id, password_hash, is_public, name FROM galleries WHERE slug = ? AND deleted_at IS NULL"
+    `SELECT id, password_hash, is_public, name FROM galleries WHERE slug = ? AND deleted_at IS NULL${tSql}`
   )
-    .bind(slug)
+    .bind(slug, ...tBindings)
     .first<{ id: string; password_hash: string; is_public: number; name: string }>();
 
   if (!gallery) return c.json({ error: "Gallery not found" }, 404);
@@ -52,6 +55,7 @@ viewerRoutes.post("/gallery/:slug/login", async (c) => {
 // ------------------------------------------------------------------
 viewerRoutes.post("/gallery/:slug/magic-link", async (c) => {
   const { slug } = c.req.param();
+  const [tSql, tBindings] = tenantClause(c.get("tenantId"));
   const { email, callbackPath } = await c.req.json<{ email: string; callbackPath?: string }>();
 
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -59,8 +63,8 @@ viewerRoutes.post("/gallery/:slug/magic-link", async (c) => {
   }
 
   const gallery = await c.env.DB.prepare(
-    "SELECT id, name FROM galleries WHERE slug = ? AND deleted_at IS NULL"
-  ).bind(slug).first<{ id: string; name: string }>();
+    `SELECT id, name FROM galleries WHERE slug = ? AND deleted_at IS NULL${tSql}`
+  ).bind(slug, ...tBindings).first<{ id: string; name: string }>();
   if (!gallery) return c.json({ error: "Gallery not found" }, 404);
 
   const normalised = email.trim().toLowerCase();

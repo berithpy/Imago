@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { FieldError } from "@/client/components/ErrorMessage";
 import { cardStyle, inputStyle, accentButtonStyle } from "@/client/components/ui";
 import { PasswordField } from "@/client/components/PasswordField";
 import { EmailListInput } from "@/client/components/EmailListInput";
+import { useTenant } from "@/client/lib/tenantContext";
 
 type Props = {
   onCreated: () => void;
@@ -10,6 +11,7 @@ type Props = {
 };
 
 export function CreateGalleryForm({ onCreated, onCancel }: Props) {
+  const { apiBase } = useTenant();
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [password, setPassword] = useState("");
@@ -21,9 +23,38 @@ export function CreateGalleryForm({ onCreated, onCancel }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
+  // Slug availability
+  const [slugStatus, setSlugStatus] = useState<"idle" | "checking" | "available" | "taken" | "reserved" | "invalid">("idle");
+  const slugDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function checkSlug(value: string) {
+    if (!value) { setSlugStatus("idle"); return; }
+    setSlugStatus("checking");
+    if (slugDebounceRef.current) clearTimeout(slugDebounceRef.current);
+    slugDebounceRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`${apiBase}/admin/galleries/check-slug?slug=${encodeURIComponent(value)}`, { credentials: "include" });
+        const data = await res.json() as { valid: boolean; available: boolean; reserved: boolean };
+        if (!data.valid) setSlugStatus("invalid");
+        else if (data.reserved) setSlugStatus("reserved");
+        else if (!data.available) setSlugStatus("taken");
+        else setSlugStatus("available");
+      } catch {
+        setSlugStatus("idle");
+      }
+    }, 400);
+  }
+
   function handleNameChange(v: string) {
     setName(v);
-    setSlug(v.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""));
+    const derived = v.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    setSlug(derived);
+    checkSlug(derived);
+  }
+
+  function handleSlugChange(v: string) {
+    setSlug(v);
+    checkSlug(v);
   }
 
   function handleTogglePublic() {
@@ -45,7 +76,7 @@ export function CreateGalleryForm({ onCreated, onCancel }: Props) {
     setError(null);
     setCreating(true);
     try {
-      const res = await fetch("/api/admin/galleries", {
+      const res = await fetch(`${apiBase}/admin/galleries`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -64,7 +95,7 @@ export function CreateGalleryForm({ onCreated, onCancel }: Props) {
         if (emailList.length > 0 && data.gallery?.id) {
           await Promise.all(
             emailList.map((email) =>
-              fetch(`/api/admin/galleries/${data.gallery!.id}/allowed-emails`, {
+              fetch(`${apiBase}/admin/galleries/${data.gallery!.id}/allowed-emails`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 credentials: "include",
@@ -109,11 +140,21 @@ export function CreateGalleryForm({ onCreated, onCancel }: Props) {
       <input
         placeholder="Slug (URL)"
         value={slug}
-        onChange={(e) => setSlug(e.target.value)}
+        onChange={(e) => handleSlugChange(e.target.value)}
         required
         pattern="[-a-z0-9]+"
-        style={inputStyle}
+        style={{
+          ...inputStyle,
+          borderColor: slugStatus === "available" ? "var(--color-accent)"
+            : slugStatus === "taken" || slugStatus === "reserved" || slugStatus === "invalid" ? "#e05c5c"
+              : undefined,
+        }}
       />
+      {slugStatus === "checking" && <p style={{ fontSize: "0.78rem", color: "var(--color-text-muted)", margin: "-4px 0 0" }}>Checking…</p>}
+      {slugStatus === "available" && <p style={{ fontSize: "0.78rem", color: "var(--color-accent)", margin: "-4px 0 0" }}>✓ Available</p>}
+      {slugStatus === "taken" && <p style={{ fontSize: "0.78rem", color: "#e05c5c", margin: "-4px 0 0" }}>✗ Already in use</p>}
+      {slugStatus === "reserved" && <p style={{ fontSize: "0.78rem", color: "#e05c5c", margin: "-4px 0 0" }}>✗ Reserved word</p>}
+      {slugStatus === "invalid" && <p style={{ fontSize: "0.78rem", color: "#e05c5c", margin: "-4px 0 0" }}>✗ Only lowercase letters, numbers, dashes</p>}
       <input
         placeholder="Description (optional)"
         value={description}
@@ -197,7 +238,7 @@ export function CreateGalleryForm({ onCreated, onCancel }: Props) {
       {error && <FieldError message={error} />}
 
       <div style={{ display: "flex", gap: 8 }}>
-        <button type="submit" disabled={creating} style={accentButtonStyle}>
+        <button type="submit" disabled={creating || slugStatus === "taken" || slugStatus === "reserved" || slugStatus === "invalid"} style={accentButtonStyle}>
           {creating ? "Creating…" : "Create"}
         </button>
         <button

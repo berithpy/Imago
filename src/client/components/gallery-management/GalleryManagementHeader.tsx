@@ -3,6 +3,7 @@ import { useState, type ReactNode } from "react";
 import { dangerButtonStyle, ghostButtonStyle } from "@/client/components/ui";
 import { exportGallery } from "@/client/lib/exportGallery";
 import { formatDate, type Gallery } from "@/client/lib/galleryManagement";
+import { useTenant } from "@/client/lib/tenantContext";
 
 type Props = {
   galleryId: string;
@@ -29,11 +30,12 @@ export function GalleryManagementHeader({
   const [exporting, setExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState<string | null>(null);
   const [exportDone, setExportDone] = useState(false);
+  const { apiBase, routeBase } = useTenant();
 
   async function handleTogglePublic() {
     if (!gallery) return;
     const next = !gallery.is_public;
-    await fetch(`/api/admin/galleries/${galleryId}/visibility`, {
+    await fetch(`${apiBase}/admin/galleries/${galleryId}/visibility`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
@@ -47,7 +49,7 @@ export function GalleryManagementHeader({
     if (!confirm(`Hide "${gallery.name}" from viewers? You can restore it later.`)) return;
     setDeletingGallery(true);
     try {
-      await fetch(`/api/admin/galleries/${galleryId}`, {
+      await fetch(`${apiBase}/admin/galleries/${galleryId}`, {
         method: "DELETE",
         credentials: "include",
       });
@@ -61,7 +63,7 @@ export function GalleryManagementHeader({
     if (!gallery) return;
     setDeletingGallery(true);
     try {
-      await fetch(`/api/admin/galleries/${galleryId}/restore`, {
+      await fetch(`${apiBase}/admin/galleries/${galleryId}/restore`, {
         method: "POST",
         credentials: "include",
       });
@@ -76,7 +78,7 @@ export function GalleryManagementHeader({
     if (!confirm(`Permanently delete "${gallery.name}" and ALL its photos? This cannot be undone.`)) return;
     setDeletingGallery(true);
     try {
-      await fetch(`/api/admin/galleries/${galleryId}/permanent`, {
+      await fetch(`${apiBase}/admin/galleries/${galleryId}/permanent`, {
         method: "DELETE",
         credentials: "include",
       });
@@ -90,7 +92,7 @@ export function GalleryManagementHeader({
     setExporting(true);
     setExportProgress("Preparing export…");
     try {
-      const res = await fetch(`/api/admin/galleries/${galleryId}/export`, {
+      const res = await fetch(`${apiBase}/admin/galleries/${galleryId}/export`, {
         credentials: "include",
       });
       if (!res.ok) throw new Error("Export failed");
@@ -124,7 +126,7 @@ export function GalleryManagementHeader({
     >
       <div>
         <Link
-          to="/admin"
+          to={`${routeBase}/admin`}
           style={{
             fontSize: "0.85rem",
             color: "var(--color-text-muted)",
@@ -141,12 +143,12 @@ export function GalleryManagementHeader({
         </h1>
         {gallery && (
           <a
-            href={`/gallery/${gallery.slug}`}
+            href={`${routeBase}/${gallery.slug}`}
             target="_blank"
             rel="noreferrer"
             style={{ fontSize: "0.85rem", color: "var(--color-text-muted)" }}
           >
-            /gallery/{gallery.slug} ↗
+            {routeBase}/{gallery.slug} ↗
           </a>
         )}
         {gallery?.deleted_at && (

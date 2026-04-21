@@ -6,8 +6,10 @@ import { pbkdf2Hash } from "../lib/crypto";
 import { auth } from "../lib/auth";
 import { logAdminEvent } from "../lib/adminLog";
 import { sendEmail, invitedUserHtml, newPhotosHtml } from "../lib/email";
+import { tenantClause } from "../lib/db";
+import type { TenantVariables } from "../middleware/tenant";
 
-export const adminRoutes = new Hono<{ Bindings: Bindings }>();
+export const adminRoutes = new Hono<{ Bindings: Bindings; Variables: TenantVariables }>();
 
 // ------------------------------------------------------------------
 // Better-auth session guard — excludes /setup
@@ -45,6 +47,11 @@ adminRoutes.post("/setup", async (c) => {
     body: { email, password, name },
   });
 
+  // Promote the first user to super-admin
+  await c.env.DB.prepare(
+    "UPDATE user SET is_super_admin = 1 WHERE email = ?"
+  ).bind(email).run();
+
   // Store recovery email in app_config (defaults to admin email)
   const resolvedRecovery = recoveryEmail?.trim() || email;
   await c.env.DB.prepare(
@@ -59,6 +66,23 @@ adminRoutes.post("/setup", async (c) => {
 // ------------------------------------------------------------------
 // Galleries CRUD
 // ------------------------------------------------------------------
+
+// check-slug — session-guarded, returns { valid, available, reserved }
+const RESERVED_GALLERY_SLUGS = ["admin", "login", "setup"];
+adminRoutes.get("/galleries/check-slug", async (c) => {
+  const slug = c.req.query("slug") ?? "";
+  const valid = /^[a-z0-9-]+$/.test(slug);
+  if (!valid) return c.json({ valid: false, available: false, reserved: false });
+  const reserved = RESERVED_GALLERY_SLUGS.includes(slug);
+  if (reserved) return c.json({ valid: true, available: false, reserved: true });
+  const tenantId: string | undefined = c.get("tenantId");
+  const [tSql, tBindings] = tenantClause(tenantId);
+  const existing = await c.env.DB.prepare(
+    `SELECT id FROM galleries WHERE slug = ?${tSql}`
+  ).bind(slug, ...tBindings).first();
+  return c.json({ valid: true, available: !existing, reserved: false });
+});
+
 adminRoutes.get("/galleries", async (c) => {
   const q = (c.req.query("q") ?? "").trim();
   const sort = c.req.query("sort") ?? "created_desc";
@@ -73,18 +97,20 @@ adminRoutes.get("/galleries", async (c) => {
   };
   const orderBy = SORT_MAP[sort] ?? "created_at DESC";
 
+  const tenantId: string | undefined = c.get("tenantId");
+  const [tSql, tBindings] = tenantClause(tenantId);
   const SELECT = "SELECT id, name, slug, description, is_public, banner_photo_id, event_date, expires_at, deleted_at, created_at FROM galleries";
 
   let results;
   if (q) {
     const like = `%${q}%`;
     ({ results } = await c.env.DB.prepare(
-      `${SELECT} WHERE (name LIKE ? OR slug LIKE ? OR description LIKE ?) ORDER BY ${orderBy}`
-    ).bind(like, like, like).all());
+      `${SELECT} WHERE (name LIKE ? OR slug LIKE ? OR description LIKE ?)${tSql} ORDER BY ${orderBy}`
+    ).bind(like, like, like, ...tBindings).all());
   } else {
     ({ results } = await c.env.DB.prepare(
-      `${SELECT} ORDER BY ${orderBy}`
-    ).all());
+      `${SELECT} WHERE 1=1${tSql} ORDER BY ${orderBy}`
+    ).bind(...tBindings).all());
   }
 
   return c.json({ galleries: results });
@@ -116,6 +142,11 @@ adminRoutes.post("/galleries", async (c) => {
     );
   }
 
+  // Reject reserved words
+  if (RESERVED_GALLERY_SLUGS.includes(slug)) {
+    return c.json({ error: "Slug is reserved" }, 400);
+  }
+
   // Check slug uniqueness
   const existing = await c.env.DB.prepare(
     "SELECT id FROM galleries WHERE slug = ?"
@@ -124,14 +155,15 @@ adminRoutes.post("/galleries", async (c) => {
     .first();
   if (existing) return c.json({ error: "Slug already in use" }, 409);
 
+  const tenantId: string | undefined = c.get("tenantId");
   const id = crypto.randomUUID();
   const passwordHash = await pbkdf2Hash(password);
   const now = Math.floor(Date.now() / 1000);
 
   await c.env.DB.prepare(
-    "INSERT INTO galleries (id, name, slug, password_hash, description, is_public, event_date, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    "INSERT INTO galleries (id, tenant_id, name, slug, password_hash, description, is_public, event_date, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
   )
-    .bind(id, name, slug, passwordHash, description ?? null, is_public ? 1 : 0, event_date ?? null, expires_at ?? null, now)
+    .bind(id, tenantId ?? null, name, slug, passwordHash, description ?? null, is_public ? 1 : 0, event_date ?? null, expires_at ?? null, now)
     .run();
 
   await logAdminEvent(c.env.DB, "GALLERY_CREATED", slug);
@@ -141,9 +173,10 @@ adminRoutes.post("/galleries", async (c) => {
 
 adminRoutes.delete("/galleries/:id", async (c) => {
   const { id } = c.req.param();
+  const [tSql, tBindings] = tenantClause(c.get("tenantId"));
   const now = Math.floor(Date.now() / 1000);
-  await c.env.DB.prepare("UPDATE galleries SET deleted_at = ? WHERE id = ?")
-    .bind(now, id)
+  await c.env.DB.prepare(`UPDATE galleries SET deleted_at = ? WHERE id = ?${tSql}`)
+    .bind(now, id, ...tBindings)
     .run();
   return c.json({ ok: true });
 });
@@ -151,8 +184,9 @@ adminRoutes.delete("/galleries/:id", async (c) => {
 // Restore a soft-deleted gallery
 adminRoutes.post("/galleries/:id/restore", async (c) => {
   const { id } = c.req.param();
-  await c.env.DB.prepare("UPDATE galleries SET deleted_at = NULL WHERE id = ?")
-    .bind(id)
+  const [tSql, tBindings] = tenantClause(c.get("tenantId"));
+  await c.env.DB.prepare(`UPDATE galleries SET deleted_at = NULL WHERE id = ?${tSql}`)
+    .bind(id, ...tBindings)
     .run();
   return c.json({ ok: true });
 });
@@ -161,6 +195,7 @@ adminRoutes.post("/galleries/:id/restore", async (c) => {
 adminRoutes.delete("/galleries/:id/permanent", async (c) => {
   const { id } = c.req.param();
 
+  const [tSql, tBindings] = tenantClause(c.get("tenantId"));
   // Get all photos to remove from R2
   const { results: photos } = await c.env.DB.prepare(
     "SELECT r2_key FROM photos WHERE gallery_id = ?"
@@ -172,7 +207,7 @@ adminRoutes.delete("/galleries/:id/permanent", async (c) => {
   await Promise.all(photos.map((p) => c.env.IMAGES_BUCKET.delete(p.r2_key)));
 
   // D1 cascade handles photos + subscribers deletion
-  await c.env.DB.prepare("DELETE FROM galleries WHERE id = ?").bind(id).run();
+  await c.env.DB.prepare(`DELETE FROM galleries WHERE id = ?${tSql}`).bind(id, ...tBindings).run();
 
   return c.json({ ok: true });
 });
@@ -180,6 +215,7 @@ adminRoutes.delete("/galleries/:id/permanent", async (c) => {
 // Set or unset banner photo
 adminRoutes.patch("/galleries/:id/banner", async (c) => {
   const { id } = c.req.param();
+  const [tSql, tBindings] = tenantClause(c.get("tenantId"));
   const { photoId } = await c.req.json<{ photoId: string | null }>();
 
   // Verify photo belongs to this gallery (if setting)
@@ -190,8 +226,8 @@ adminRoutes.patch("/galleries/:id/banner", async (c) => {
     if (!photo) return c.json({ error: "Photo not found in this gallery" }, 404);
   }
 
-  await c.env.DB.prepare("UPDATE galleries SET banner_photo_id = ? WHERE id = ?")
-    .bind(photoId ?? null, id)
+  await c.env.DB.prepare(`UPDATE galleries SET banner_photo_id = ? WHERE id = ?${tSql}`)
+    .bind(photoId ?? null, id, ...tBindings)
     .run();
   return c.json({ ok: true });
 });
@@ -199,9 +235,10 @@ adminRoutes.patch("/galleries/:id/banner", async (c) => {
 // Toggle public/private
 adminRoutes.patch("/galleries/:id/visibility", async (c) => {
   const { id } = c.req.param();
+  const [tSql, tBindings] = tenantClause(c.get("tenantId"));
   const { is_public } = await c.req.json<{ is_public: boolean }>();
-  await c.env.DB.prepare("UPDATE galleries SET is_public = ? WHERE id = ?")
-    .bind(is_public ? 1 : 0, id)
+  await c.env.DB.prepare(`UPDATE galleries SET is_public = ? WHERE id = ?${tSql}`)
+    .bind(is_public ? 1 : 0, id, ...tBindings)
     .run();
   return c.json({ ok: true });
 });
@@ -209,6 +246,7 @@ adminRoutes.patch("/galleries/:id/visibility", async (c) => {
 // Update general settings (name, description, event_date, expires_at)
 adminRoutes.patch("/galleries/:id/settings", async (c) => {
   const { id } = c.req.param();
+  const [tSql, tBindings] = tenantClause(c.get("tenantId"));
   const { name, description, event_date, expires_at } = await c.req.json<{
     name?: string;
     description?: string | null;
@@ -226,8 +264,8 @@ adminRoutes.patch("/galleries/:id/settings", async (c) => {
 
   if (!fields.length) return c.json({ error: "Nothing to update" }, 400);
 
-  await c.env.DB.prepare(`UPDATE galleries SET ${fields.join(", ")} WHERE id = ?`)
-    .bind(...values, id)
+  await c.env.DB.prepare(`UPDATE galleries SET ${fields.join(", ")} WHERE id = ?${tSql}`)
+    .bind(...values, id, ...tBindings)
     .run();
 
   return c.json({ ok: true });
@@ -236,15 +274,16 @@ adminRoutes.patch("/galleries/:id/settings", async (c) => {
 // Reset gallery password
 adminRoutes.patch("/galleries/:id/password", async (c) => {
   const { id } = c.req.param();
+  const [tSql, tBindings] = tenantClause(c.get("tenantId"));
   const { password } = await c.req.json<{ password: string }>();
   if (!password || password.length < 4) {
     return c.json({ error: "Password must be at least 4 characters" }, 400);
   }
   const passwordHash = await pbkdf2Hash(password);
   const result = await c.env.DB.prepare(
-    "UPDATE galleries SET password_hash = ? WHERE id = ?"
+    `UPDATE galleries SET password_hash = ? WHERE id = ?${tSql}`
   )
-    .bind(passwordHash, id)
+    .bind(passwordHash, id, ...tBindings)
     .run();
   if (!result.meta.changes) return c.json({ error: "Gallery not found" }, 404);
   return c.json({ ok: true });
@@ -255,11 +294,12 @@ adminRoutes.patch("/galleries/:id/password", async (c) => {
 // ------------------------------------------------------------------
 adminRoutes.get("/galleries/:id/export", async (c) => {
   const { id } = c.req.param();
+  const [tSql, tBindings] = tenantClause(c.get("tenantId"));
 
   const gallery = await c.env.DB.prepare(
-    "SELECT id, name, slug FROM galleries WHERE id = ?"
+    `SELECT id, name, slug FROM galleries WHERE id = ?${tSql}`
   )
-    .bind(id)
+    .bind(id, ...tBindings)
     .first<{ id: string; name: string; slug: string }>();
   if (!gallery) return c.json({ error: "Gallery not found" }, 404);
 
@@ -282,14 +322,15 @@ adminRoutes.get("/galleries/:id/export", async (c) => {
 // ------------------------------------------------------------------
 adminRoutes.get("/galleries/:id/photos", async (c) => {
   const { id } = c.req.param();
+  const [tSql, tBindings] = tenantClause(c.get("tenantId"));
   const gallery = await c.env.DB.prepare(
     `SELECT g.id, g.name, g.slug, g.is_public, g.banner_photo_id, p.r2_key AS banner_r2_key,
             g.event_date, g.expires_at
      FROM galleries g
      LEFT JOIN photos p ON p.id = g.banner_photo_id
-     WHERE g.id = ?`
+     WHERE g.id = ?${tSql}`
   )
-    .bind(id)
+    .bind(id, ...tBindings)
     .first<{ id: string; name: string; slug: string; is_public: number; banner_photo_id: string | null; banner_r2_key: string | null; event_date: number | null; expires_at: number | null }>();
   if (!gallery) return c.json({ error: "Gallery not found" }, 404);
 
@@ -307,11 +348,12 @@ adminRoutes.get("/galleries/:id/photos", async (c) => {
 // ------------------------------------------------------------------
 adminRoutes.post("/galleries/:id/photos", async (c) => {
   const { id } = c.req.param();
+  const [tSql, tBindings] = tenantClause(c.get("tenantId"));
 
   const gallery = await c.env.DB.prepare(
-    "SELECT id, name, slug FROM galleries WHERE id = ?"
+    `SELECT id, name, slug FROM galleries WHERE id = ?${tSql}`
   )
-    .bind(id)
+    .bind(id, ...tBindings)
     .first<{ id: string; name: string; slug: string }>();
   if (!gallery) return c.json({ error: "Gallery not found" }, 404);
 
@@ -392,11 +434,12 @@ adminRoutes.delete("/galleries/:galleryId/photos/:photoId", async (c) => {
 // ------------------------------------------------------------------
 adminRoutes.post("/galleries/:id/viewer-bypass", async (c) => {
   const { id } = c.req.param();
+  const [tSql, tBindings] = tenantClause(c.get("tenantId"));
 
   const gallery = await c.env.DB.prepare(
-    "SELECT id, slug FROM galleries WHERE id = ? AND deleted_at IS NULL"
+    `SELECT id, slug FROM galleries WHERE id = ? AND deleted_at IS NULL${tSql}`
   )
-    .bind(id)
+    .bind(id, ...tBindings)
     .first<{ id: string; slug: string }>();
 
   if (!gallery) return c.json({ error: "Gallery not found" }, 404);
@@ -441,6 +484,7 @@ adminRoutes.get("/galleries/:id/allowed-emails", async (c) => {
 
 adminRoutes.post("/galleries/:id/allowed-emails", async (c) => {
   const { id } = c.req.param();
+  const [tSql, tBindings] = tenantClause(c.get("tenantId"));
   const { email } = await c.req.json<{ email: string }>();
 
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -448,8 +492,8 @@ adminRoutes.post("/galleries/:id/allowed-emails", async (c) => {
   }
 
   const gallery = await c.env.DB.prepare(
-    "SELECT id, name, slug FROM galleries WHERE id = ? AND deleted_at IS NULL"
-  ).bind(id).first<{ id: string; name: string; slug: string }>();
+    `SELECT id, name, slug FROM galleries WHERE id = ? AND deleted_at IS NULL${tSql}`
+  ).bind(id, ...tBindings).first<{ id: string; name: string; slug: string }>();
   if (!gallery) return c.json({ error: "Gallery not found" }, 404);
 
   const entryId = crypto.randomUUID();
@@ -485,9 +529,38 @@ adminRoutes.delete("/galleries/:id/allowed-emails/:email", async (c) => {
 // Admin user management
 // ------------------------------------------------------------------
 adminRoutes.get("/users", async (c) => {
+  // Super-admin only
+  const origin = new URL(c.req.raw.url).origin;
+  const session = await auth(c.env, origin).api.getSession({ headers: c.req.raw.headers });
+  const sessionUser = await c.env.DB.prepare(
+    "SELECT is_super_admin FROM user WHERE email = ?"
+  ).bind(session!.user.email).first<{ is_super_admin: number }>();
+  if (!sessionUser?.is_super_admin) return c.json({ error: "Forbidden" }, 403);
+
+  const tenantId = c.req.query("tenantId");
+
+  if (tenantId) {
+    const { results } = await c.env.DB.prepare(
+      `SELECT u.id, u.name, u.email, u.is_super_admin, u.createdAt, m.role
+       FROM user u
+       JOIN member m ON m.userId = u.id
+       JOIN organization o ON o.id = m.organizationId
+       JOIN tenants t ON t.organization_id = o.id
+       WHERE t.id = ?
+       ORDER BY u.createdAt DESC`
+    ).bind(tenantId).all<{ id: string; name: string; email: string; is_super_admin: number; createdAt: number; role: string }>();
+    return c.json({ users: results });
+  }
+
   const { results } = await c.env.DB.prepare(
-    "SELECT id, name, email, emailVerified, createdAt FROM user ORDER BY createdAt ASC"
-  ).all<{ id: string; name: string; email: string; emailVerified: number; createdAt: number }>();
+    `SELECT u.id, u.name, u.email, u.is_super_admin, u.createdAt,
+            m.role, t.id AS tenant_id, t.name AS tenant_name
+     FROM user u
+     LEFT JOIN member m ON m.userId = u.id
+     LEFT JOIN organization o ON o.id = m.organizationId
+     LEFT JOIN tenants t ON t.organization_id = o.id
+     ORDER BY u.createdAt DESC`
+  ).all<{ id: string; name: string; email: string; is_super_admin: number; createdAt: number; role: string | null; tenant_id: string | null; tenant_name: string | null }>();
   return c.json({ users: results });
 });
 

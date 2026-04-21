@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { cardStyle, ghostButtonStyle, dangerButtonStyle } from "@/client/components/ui";
+import { useTenant } from "@/client/lib/tenantContext";
 
 export type Gallery = {
   id: string;
@@ -34,6 +35,7 @@ interface GalleryListProps {
 }
 
 export function GalleryList({ refreshKey = 0, onSoftDelete, onRestore, onPermanentDelete }: GalleryListProps) {
+  const { apiBase } = useTenant();
   const [galleries, setGalleries] = useState<Gallery[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -54,7 +56,7 @@ export function GalleryList({ refreshKey = 0, onSoftDelete, onRestore, onPermane
     try {
       const params = new URLSearchParams({ sort: s });
       if (q) params.set("q", q);
-      const res = await fetch(`/api/admin/galleries?${params}`, { credentials: "include" });
+      const res = await fetch(`${apiBase}/admin/galleries?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error(`Server error ${res.status}`);
       const data = await res.json() as { galleries: Gallery[] };
       setGalleries(data.galleries ?? []);
@@ -159,6 +161,7 @@ interface GalleryListItemProps {
 }
 
 function GalleryListItem({ gallery: g, actionInProgress, onSoftDelete, onRestore, onPermanentDelete }: GalleryListItemProps) {
+  const { routeBase } = useTenant();
   const now = Date.now();
 
   return (
@@ -172,7 +175,7 @@ function GalleryListItem({ gallery: g, actionInProgress, onSoftDelete, onRestore
       }}
     >
       <Link
-        to={`/admin/galleries/${g.id}`}
+        to={`${routeBase}/admin/galleries/${g.id}`}
         style={{ textDecoration: "none", color: "inherit", flex: 1, minWidth: 0 }}
       >
         {/* Title + badges */}

@@ -97,4 +97,112 @@ describe("subscribe routes", () => {
 
     expect(deleted).toBeNull();
   });
+
+  it("GET /api/subscribe/confirm returns 400 when token is missing", async () => {
+    const res = await harness.request("/api/subscribe/confirm");
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "Token required" });
+  });
+
+  it("GET /api/subscribe/unsubscribe returns 400 when token is missing", async () => {
+    const res = await harness.request("/api/subscribe/unsubscribe");
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "Token required" });
+  });
+
+  it("GET /api/subscribe/confirm sends a subscription confirmed email", async () => {
+    const gallery = await harness.seedGallery({ slug: "email-confirm-gallery", isPublic: true });
+
+    await harness.request(`/api/subscribe/galleries/${gallery.slug}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "email-confirm@example.com" }),
+    });
+    mockSendEmail.mockClear();
+
+    const row = await harness.env.DB.prepare(
+      "SELECT token FROM gallery_subscribers WHERE gallery_id = ? AND email = ?"
+    ).bind(gallery.id, "email-confirm@example.com").first<{ token: string }>();
+
+    await harness.request(`/api/subscribe/confirm?token=${encodeURIComponent(row!.token)}`);
+
+    expect(mockSendEmail).toHaveBeenCalledTimes(1);
+    expect(mockSendEmail).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      expect.objectContaining({ to: "email-confirm@example.com" })
+    );
+  });
+
+  it("GET /api/subscribe/unsubscribe sends an unsubscribe confirmation email", async () => {
+    const gallery = await harness.seedGallery({ slug: "email-unsub-gallery", isPublic: true });
+
+    await harness.request(`/api/subscribe/galleries/${gallery.slug}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "unsub-email@example.com" }),
+    });
+    mockSendEmail.mockClear();
+
+    const row = await harness.env.DB.prepare(
+      "SELECT token FROM gallery_subscribers WHERE gallery_id = ? AND email = ?"
+    ).bind(gallery.id, "unsub-email@example.com").first<{ token: string }>();
+
+    await harness.request(`/api/subscribe/unsubscribe?token=${encodeURIComponent(row!.token)}`);
+
+    expect(mockSendEmail).toHaveBeenCalledTimes(1);
+    expect(mockSendEmail).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      expect.objectContaining({ to: "unsub-email@example.com" })
+    );
+  });
+
+  it("POST /api/subscribe/galleries/:slug returns 400 for invalid email", async () => {
+    const gallery = await harness.seedGallery({ slug: "invalid-email-gallery", isPublic: true });
+    const res = await harness.request(`/api/subscribe/galleries/${gallery.slug}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "not-an-email" }),
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: expect.stringContaining("email") });
+  });
+
+  it("POST /api/subscribe/galleries/:slug returns 404 for unknown gallery", async () => {
+    const res = await harness.request("/api/subscribe/galleries/unknown-gallery-slug", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "fan@example.com" }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("POST /api/subscribe/galleries/:slug resends existing token if already subscribed", async () => {
+    const gallery = await harness.seedGallery({ slug: "resend-gallery", isPublic: true });
+
+    await harness.request(`/api/subscribe/galleries/${gallery.slug}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "repeat@example.com" }),
+    });
+    const row1 = await harness.env.DB.prepare(
+      "SELECT token FROM gallery_subscribers WHERE gallery_id = ? AND email = ?"
+    ).bind(gallery.id, "repeat@example.com").first<{ token: string }>();
+
+    mockSendEmail.mockClear();
+
+    await harness.request(`/api/subscribe/galleries/${gallery.slug}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "repeat@example.com" }),
+    });
+
+    expect(mockSendEmail).toHaveBeenCalledTimes(1);
+
+    const row2 = await harness.env.DB.prepare(
+      "SELECT token FROM gallery_subscribers WHERE gallery_id = ? AND email = ?"
+    ).bind(gallery.id, "repeat@example.com").first<{ token: string }>();
+    expect(row2?.token).toBe(row1?.token);
+  });
 });

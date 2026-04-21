@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { PasswordField } from "@/client/components/PasswordField";
+import { useTenant } from "@/client/lib/tenantContext";
 
 type Props = {
   galleryId: string;
 };
 
 export function GalleryManagementPasswordResetSection({ galleryId }: Props) {
+  const { apiBase } = useTenant();
   const [newPassword, setNewPassword] = useState("");
   const [resettingPassword, setResettingPassword] = useState(false);
   const [passwordResetDone, setPasswordResetDone] = useState(false);
@@ -14,7 +16,7 @@ export function GalleryManagementPasswordResetSection({ galleryId }: Props) {
     if (!newPassword) return;
     setResettingPassword(true);
     try {
-      const res = await fetch(`/api/admin/galleries/${galleryId}/password`, {
+      const res = await fetch(`${apiBase}/admin/galleries/${galleryId}/password`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

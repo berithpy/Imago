@@ -1,22 +1,26 @@
 import { Hono } from "hono";
 import { Bindings } from "../index";
 import { requireViewer } from "../middleware/auth";
+import { tenantClause } from "../lib/db";
+import type { TenantVariables } from "../middleware/tenant";
 
-export const galleryRoutes = new Hono<{ Bindings: Bindings }>();
+export const galleryRoutes = new Hono<{ Bindings: Bindings; Variables: TenantVariables }>();
 
 // ------------------------------------------------------------------
 // Public: list galleries (names + slugs only, no photos)
 // ------------------------------------------------------------------
 galleryRoutes.get("/", async (c) => {
+  const tenantId: string | undefined = c.get("tenantId");
+  const [tSql, tBindings] = tenantClause(tenantId);
   const now = Math.floor(Date.now() / 1000);
   const { results } = await c.env.DB.prepare(
     `SELECT g.id, g.name, g.slug, g.description, g.is_public, g.banner_photo_id, p.r2_key AS banner_r2_key,
             g.event_date, g.expires_at, g.created_at
      FROM galleries g
      LEFT JOIN photos p ON p.id = g.banner_photo_id
-     WHERE g.deleted_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > ?)
+     WHERE g.deleted_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > ?)${tSql}
      ORDER BY g.created_at DESC`
-  ).bind(now).all<{ id: string; name: string; slug: string; description: string | null; is_public: number; banner_photo_id: string | null; banner_r2_key: string | null; event_date: number | null; expires_at: number | null; created_at: number }>();
+  ).bind(now, ...tBindings).all<{ id: string; name: string; slug: string; description: string | null; is_public: number; banner_photo_id: string | null; banner_r2_key: string | null; event_date: number | null; expires_at: number | null; created_at: number }>();
 
   return c.json({ galleries: results });
 });
@@ -26,14 +30,15 @@ galleryRoutes.get("/", async (c) => {
 // ------------------------------------------------------------------
 galleryRoutes.get("/:slug", async (c) => {
   const { slug } = c.req.param();
+  const [tSql, tBindings] = tenantClause(c.get("tenantId"));
   const gallery = await c.env.DB.prepare(
     `SELECT g.id, g.name, g.slug, g.description, g.is_public, g.banner_photo_id, p.r2_key AS banner_r2_key,
             g.event_date, g.expires_at, g.created_at
      FROM galleries g
      LEFT JOIN photos p ON p.id = g.banner_photo_id
-     WHERE g.slug = ? AND g.deleted_at IS NULL`
+     WHERE g.slug = ? AND g.deleted_at IS NULL${tSql}`
   )
-    .bind(slug)
+    .bind(slug, ...tBindings)
     .first<{ id: string; name: string; slug: string; description: string | null; is_public: number; banner_photo_id: string | null; banner_r2_key: string | null; event_date: number | null; expires_at: number | null; created_at: number }>();
 
   if (!gallery) return c.json({ error: "Gallery not found" }, 404);
@@ -51,11 +56,12 @@ galleryRoutes.get("/:slug", async (c) => {
 // ------------------------------------------------------------------
 galleryRoutes.get("/:slug/export", requireViewer as any, async (c) => {
   const { slug } = c.req.param();
+  const [tSql, tBindings] = tenantClause(c.get("tenantId"));
 
   const gallery = await c.env.DB.prepare(
-    "SELECT id, name FROM galleries WHERE slug = ? AND deleted_at IS NULL"
+    `SELECT id, name FROM galleries WHERE slug = ? AND deleted_at IS NULL${tSql}`
   )
-    .bind(slug)
+    .bind(slug, ...tBindings)
     .first<{ id: string; name: string }>();
   if (!gallery) return c.json({ error: "Gallery not found" }, 404);
 
@@ -79,11 +85,12 @@ galleryRoutes.get("/:slug/export", requireViewer as any, async (c) => {
 // ------------------------------------------------------------------
 galleryRoutes.get("/:slug/photos/:photoId", requireViewer as any, async (c) => {
   const { slug, photoId } = c.req.param();
+  const [tSql, tBindings] = tenantClause(c.get("tenantId"));
 
   const gallery = await c.env.DB.prepare(
-    "SELECT id FROM galleries WHERE slug = ? AND deleted_at IS NULL"
+    `SELECT id FROM galleries WHERE slug = ? AND deleted_at IS NULL${tSql}`
   )
-    .bind(slug)
+    .bind(slug, ...tBindings)
     .first<{ id: string }>();
 
   if (!gallery) return c.json({ error: "Gallery not found" }, 404);
@@ -111,13 +118,14 @@ galleryRoutes.get("/:slug/photos/:photoId", requireViewer as any, async (c) => {
 // ------------------------------------------------------------------
 galleryRoutes.get("/:slug/photos", requireViewer as any, async (c) => {
   const { slug } = c.req.param();
+  const [tSql, tBindings] = tenantClause(c.get("tenantId"));
   const cursor = c.req.query("cursor");
   const limit = Math.min(Number(c.req.query("limit") ?? 50), 100);
 
   const gallery = await c.env.DB.prepare(
-    "SELECT id FROM galleries WHERE slug = ? AND deleted_at IS NULL"
+    `SELECT id FROM galleries WHERE slug = ? AND deleted_at IS NULL${tSql}`
   )
-    .bind(slug)
+    .bind(slug, ...tBindings)
     .first<{ id: string }>();
 
   if (!gallery) return c.json({ error: "Gallery not found" }, 404);

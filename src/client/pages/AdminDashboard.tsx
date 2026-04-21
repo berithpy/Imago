@@ -5,37 +5,39 @@ import { SpinnerOverlay } from "@/client/components/Spinner";
 import { CreateGalleryForm } from "@/client/components/CreateGalleryForm";
 import { GalleryList } from "@/client/components/GalleryList";
 import { accentButtonStyle, ghostButtonStyle } from "@/client/components/ui";
+import { useTenant } from "@/client/lib/tenantContext";
 
 const authClient = createAuthClient({ baseURL: `${window.location.origin}/api/auth` });
 
 export function AdminDashboard() {
   const navigate = useNavigate();
+  const { apiBase, routeBase } = useTenant();
   const [showCreate, setShowCreate] = useState(false);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     authClient.getSession({ fetchOptions: { credentials: "include" } }).then(({ data }) => {
-      if (!data?.session) navigate("/admin/login");
+      if (!data?.session) navigate(`${routeBase}/admin/login`);
       else setSessionChecked(true);
     });
-  }, [navigate]);
+  }, [navigate, routeBase]);
 
   async function handleSignOut() {
     await authClient.signOut({ fetchOptions: { credentials: "include" } });
-    navigate("/admin/login");
+    navigate(`${routeBase}/admin/login`);
   }
 
   async function handleSoftDelete(id: string) {
-    await fetch(`/api/admin/galleries/${id}`, { method: "DELETE", credentials: "include" });
+    await fetch(`${apiBase}/admin/galleries/${id}`, { method: "DELETE", credentials: "include" });
   }
 
   async function handleRestore(id: string) {
-    await fetch(`/api/admin/galleries/${id}/restore`, { method: "POST", credentials: "include" });
+    await fetch(`${apiBase}/admin/galleries/${id}/restore`, { method: "POST", credentials: "include" });
   }
 
   async function handlePermanentDelete(id: string) {
-    await fetch(`/api/admin/galleries/${id}/permanent`, { method: "DELETE", credentials: "include" });
+    await fetch(`${apiBase}/admin/galleries/${id}/permanent`, { method: "DELETE", credentials: "include" });
   }
 
   return (
@@ -43,7 +45,7 @@ export function AdminDashboard() {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 40 }}>
         <div>
-          <a href="/" style={{ fontSize: "0.85rem", color: "var(--color-text-muted)" }}>← Site</a>
+          <a href={routeBase || "/"} style={{ fontSize: "0.85rem", color: "var(--color-text-muted)" }}>← Site</a>
           <h1 style={{ fontSize: "1.75rem", fontWeight: 700, marginTop: 4 }}>Admin</h1>
         </div>
         <button onClick={handleSignOut} style={ghostButtonStyle}>Sign out</button>

@@ -115,6 +115,20 @@ export function invitedUserHtml(appName: string, loginUrl: string, email: string
 </html>`;
 }
 
+export function orgInvitationHtml(orgName: string, acceptUrl: string, inviterName: string, inviteeEmail: string): string {
+  return `<!DOCTYPE html>
+<html>
+<body style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#222;">
+  <h2 style="font-size:1.25rem;font-weight:700;margin-bottom:8px;">You've been invited to ${escapeHtml(orgName)}</h2>
+  <p style="margin-bottom:16px;"><strong>${escapeHtml(inviterName)}</strong> has invited <strong>${escapeHtml(inviteeEmail)}</strong> to join <strong>${escapeHtml(orgName)}</strong> on Imago.</p>
+  <a href="${escapeHtml(acceptUrl)}" style="display:inline-block;background:#222;color:#fff;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:600;">
+    Accept invitation
+  </a>
+  <p style="margin-top:24px;font-size:0.85rem;color:#666;">If you didn't expect this invitation, you can safely ignore this email.</p>
+</body>
+</html>`;
+}
+
 export function magicLinkHtml(galleryName: string, magicLinkUrl: string): string {
   return `<!DOCTYPE html>
 <html>

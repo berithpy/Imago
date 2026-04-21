@@ -13,6 +13,7 @@ export const user = sqliteTable("user", {
   image: text("image"),
   createdAt: integer("createdAt", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
   updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
+  isSuperAdmin: integer("is_super_admin", { mode: "boolean" }).notNull().default(false),
 });
 
 export const session = sqliteTable("session", {
@@ -24,6 +25,8 @@ export const session = sqliteTable("session", {
   ipAddress: text("ipAddress"),
   userAgent: text("userAgent"),
   userId: text("userId").notNull().references(() => user.id, { onDelete: "cascade" }),
+  // Added by better-auth organization plugin
+  activeOrganizationId: text("activeOrganizationId"),
 });
 
 export const account = sqliteTable("account", {
@@ -52,11 +55,55 @@ export const verification = sqliteTable("verification", {
 });
 
 // ------------------------------------------------------------------
+// Better-auth organization plugin tables
+// ------------------------------------------------------------------
+
+export const organization = sqliteTable("organization", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  slug: text("slug").notNull().unique(),
+  logo: text("logo"),
+  metadata: text("metadata"),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
+});
+
+export const member = sqliteTable("member", {
+  id: text("id").primaryKey(),
+  userId: text("userId").notNull().references(() => user.id, { onDelete: "cascade" }),
+  organizationId: text("organizationId").notNull().references(() => organization.id, { onDelete: "cascade" }),
+  role: text("role").notNull(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
+});
+
+export const invitation = sqliteTable("invitation", {
+  id: text("id").primaryKey(),
+  email: text("email").notNull(),
+  inviterId: text("inviterId").notNull().references(() => user.id, { onDelete: "cascade" }),
+  organizationId: text("organizationId").notNull().references(() => organization.id, { onDelete: "cascade" }),
+  role: text("role"),
+  status: text("status").notNull(),
+  expiresAt: integer("expiresAt", { mode: "timestamp" }).notNull(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
+});
+
+// ------------------------------------------------------------------
 // App tables
 // ------------------------------------------------------------------
 
+export const tenants = sqliteTable("tenants", {
+  id: text("id").primaryKey(),
+  slug: text("slug").notNull().unique(),
+  name: text("name").notNull(),
+  organizationId: text("organization_id"),
+  deletedAt: integer("deleted_at"),
+  createdAt: integer("created_at").notNull().default(sql`(unixepoch())`),
+}, (t) => [
+  uniqueIndex("idx_tenants_slug").on(t.slug),
+]);
+
 export const galleries = sqliteTable("galleries", {
   id: text("id").primaryKey(),
+  tenantId: text("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
@@ -72,6 +119,7 @@ export const galleries = sqliteTable("galleries", {
   index("idx_galleries_slug").on(t.slug),
   index("idx_galleries_deleted").on(t.deletedAt),
   index("idx_galleries_expires").on(t.expiresAt),
+  index("idx_galleries_tenant").on(t.tenantId),
 ]);
 
 export const photos = sqliteTable("photos", {

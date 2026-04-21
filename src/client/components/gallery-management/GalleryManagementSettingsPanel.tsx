@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Gallery } from "@/client/lib/galleryManagement";
 import { toDateInputValue } from "@/client/lib/galleryManagement";
 import { GalleryManagementPasswordResetSection } from "@/client/components/gallery-management/GalleryManagementPasswordResetSection";
+import { useTenant } from "@/client/lib/tenantContext";
 
 type Props = {
   galleryId: string;
@@ -20,6 +21,7 @@ export function GalleryManagementSettingsPanel({
   const [settingsEventDate, setSettingsEventDate] = useState("");
   const [settingsExpiresAt, setSettingsExpiresAt] = useState("");
   const [savingSettings, setSavingSettings] = useState(false);
+  const { apiBase } = useTenant();
 
   useEffect(() => {
     setSettingsName(gallery.name);
@@ -31,7 +33,7 @@ export function GalleryManagementSettingsPanel({
     e.preventDefault();
     setSavingSettings(true);
     try {
-      await fetch(`/api/admin/galleries/${galleryId}/settings`, {
+      await fetch(`${apiBase}/admin/galleries/${galleryId}/settings`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",

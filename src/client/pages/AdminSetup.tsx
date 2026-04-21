@@ -2,9 +2,11 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FieldError } from "@/client/components/ErrorMessage";
 import { cardStyle, inputLargeStyle, fullWidthButtonStyle } from "@/client/components/ui";
+import { useTenant } from "@/client/lib/tenantContext";
 
 export function AdminSetup() {
   const navigate = useNavigate();
+  const { routeBase } = useTenant();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -27,7 +29,7 @@ export function AdminSetup() {
       const data = await res.json() as { error?: string };
       if (res.ok) {
         setDone(true);
-        setTimeout(() => navigate("/admin/login"), 2000);
+        setTimeout(() => navigate(`${routeBase}/admin/login`), 2000);
       } else {
         setError(data.error ?? "Setup failed");
       }

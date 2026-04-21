@@ -1,4 +1,4 @@
-import type { MouseEvent } from "react";
+import { useState, type MouseEvent } from "react";
 
 interface LightboxProps {
   r2Key: string;
@@ -8,6 +8,34 @@ interface LightboxProps {
 }
 
 export function Lightbox({ r2Key, alt, onClose, filename }: LightboxProps) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleShare(e: MouseEvent) {
+    e.stopPropagation();
+    const url = window.location.href;
+
+    try {
+      if (navigator.share) {
+        await navigator.share({ url, title: alt });
+        return;
+      }
+
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("Clipboard is not available");
+      }
+
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
+
+      alert("Unable to share or copy the link. Please try again.");
+    }
+  }
+
   async function handleDownload(e: MouseEvent) {
     e.stopPropagation();
     const res = await fetch(`/api/images/${r2Key}?variant=full`, { credentials: "include" });
@@ -46,22 +74,40 @@ export function Lightbox({ r2Key, alt, onClose, filename }: LightboxProps) {
           flexShrink: 0,
         }}
       >
-        <button
-          onClick={handleDownload}
-          aria-label="Download photo"
-          style={{
-            background: "rgba(255,255,255,0.1)",
-            border: "1px solid rgba(255,255,255,0.3)",
-            borderRadius: 6,
-            color: "white",
-            fontFamily: "'Courier New', Courier, monospace",
-            fontSize: "0.85rem",
-            padding: "6px 18px",
-            cursor: "pointer",
-          }}
-        >
-          ⬇ Download
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={handleDownload}
+            aria-label="Download photo"
+            style={{
+              background: "rgba(255,255,255,0.1)",
+              border: "1px solid rgba(255,255,255,0.3)",
+              borderRadius: 6,
+              color: "white",
+              fontFamily: "'Courier New', Courier, monospace",
+              fontSize: "0.85rem",
+              padding: "6px 18px",
+              cursor: "pointer",
+            }}
+          >
+            ⬇ Download
+          </button>
+          <button
+            onClick={handleShare}
+            aria-label="Share photo"
+            style={{
+              background: "rgba(255,255,255,0.1)",
+              border: "1px solid rgba(255,255,255,0.3)",
+              borderRadius: 6,
+              color: "white",
+              fontFamily: "'Courier New', Courier, monospace",
+              fontSize: "0.85rem",
+              padding: "6px 18px",
+              cursor: "pointer",
+            }}
+          >
+            {copied ? "✓ Copied!" : "↗ Share"}
+          </button>
+        </div>
         <button
           onClick={onClose}
           aria-label="Close"
