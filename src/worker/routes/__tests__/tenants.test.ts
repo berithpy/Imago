@@ -48,7 +48,9 @@ describe("tenants routes", () => {
   });
 
   it("GET /api/admin/tenants returns 403 when user is not super-admin", async () => {
-    // User exists but is not super-admin
+    // A real super-admin already exists, plus a separate non-super-admin user
+    // who is the one logging in. That second user must remain forbidden.
+    await harness.seedUser({ email: "real-super@example.com", isSuperAdmin: true });
     await harness.seedUser({ email: "superadmin@example.com", isSuperAdmin: false });
     const res = await harness.request("/api/admin/tenants");
     expect(res.status).toBe(403);

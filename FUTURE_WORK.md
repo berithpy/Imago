@@ -164,3 +164,28 @@ Allow tenant admins to change a gallery password without immediately invalidatin
 
 If subscriber counts grow large and D1 write contention becomes a problem on high-traffic galleries, consider moving subscriber storage to Workers KV. This is a scaling optimization, not a current concern at the app's current scale. It would trade D1 transactional guarantees for KV's lower latency and higher write throughput.
 
+---
+
+## Centralized Client API Layer
+
+The React SPA currently makes API calls with `fetch("/api/...")` literals scattered across every page and component. Each call repeats `credentials: "include"`, sets its own headers, parses its own response, and decides on its own what to do on errors. This made the recent admin redirect-loop bug subtle: there was no single place where "what does a 403 from an admin route mean for the session" could be answered. Streamlining this layer would prevent that whole class of bug from recurring and would shrink most page components substantially.
+
+### Thin API client module (first step)
+
+A single `src/client/lib/api.ts` should own the base URL, default credentials, JSON parsing, and a typed `ApiError` class. Per-domain modules (`lib/api/admin.ts`, `lib/api/galleries.ts`, `lib/api/viewer.ts`) wrap it and expose intent-named functions like `adminApi.listTenants()` instead of raw URLs. Pages stop knowing about HTTP at all.
+
+This is also the place where global error policy lives — for example, "any 401 or 403 from an admin route signs the user out and redirects to the login page with a clear error code" becomes a one-line policy in one file instead of being re-implemented (and forgotten) in every page.
+
+### React Query for state and lifecycle
+
+Layered on top of the client module, React Query removes the per-page `sessionChecked` / `loading` / `error` boolean soup, dedupes concurrent requests, and provides a single `QueryClient` `defaultOptions` hook for cross-cutting error handling. The signout-on-403 policy described above slots in cleanly there.
+
+### End-to-end type safety with `hono/client`
+
+Once the client module is stable, swapping the underlying `fetch` for Hono's `hc<AppType>` gives the SPA full type inference of every route, status code, and response shape directly from the worker. This eliminates URL typos, response-shape mismatches, and forgotten error codes by construction.
+
+### Suggested rollout
+
+The work is incremental and does not require a big-bang migration. Introduce the client module and one domain wrapper, migrate one page (the admin dashboards are the highest-value target since they already exhibited a redirect-loop bug), then expand from there. React Query and `hc` can each be adopted later without rewriting consumers.
+
+

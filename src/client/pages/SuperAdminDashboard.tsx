@@ -77,14 +77,26 @@ export function SuperAdminDashboard() {
   useEffect(() => {
     authClient.getSession({ fetchOptions: { credentials: "include" } }).then(({ data }) => {
       if (!data?.session) { navigate("/admin/login", { replace: true }); return; }
-      // Verify super-admin by attempting to load tenants
+      // Verify super-admin by attempting to load tenants. If the signed-in
+      // user is authenticated but lacks super-admin (e.g. a pre-multitenant
+      // single-admin install where the migration left is_super_admin = 0),
+      // sign them out and surface an explicit error instead of bouncing
+      // back to /admin (which would loop: dashboard 403 → login → dashboard).
       fetch("/api/admin/tenants", { credentials: "include" })
-        .then((r) => {
-          if (r.status === 403) { navigate("/admin/login", { replace: true }); return r; }
-          return r;
+        .then(async (r) => {
+          if (r.status === 403) {
+            await authClient.signOut({ fetchOptions: { credentials: "include" } });
+            navigate("/admin/login?error=not-authorized", { replace: true });
+            return null;
+          }
+          return r.json() as Promise<{ tenants: Tenant[] }>;
         })
-        .then((r) => r.json() as Promise<{ tenants: Tenant[] }>)
-        .then((d) => { setTenants(d.tenants ?? []); setTenantsLoading(false); setSessionChecked(true); })
+        .then((d) => {
+          if (!d) return;
+          setTenants(d.tenants ?? []);
+          setTenantsLoading(false);
+          setSessionChecked(true);
+        })
         .catch(() => setTenantsLoading(false));
     });
   }, [navigate]);
