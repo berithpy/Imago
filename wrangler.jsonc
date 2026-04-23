@@ -55,6 +55,9 @@
    * https://developers.cloudflare.com/workers/configuration/secrets/
    */
   // vars are set via .dev.vars (local) and .prod.vars + npm run secrets:push (production)
+  "vars": {
+    "FROM_EMAIL": "auth-imago@berith.moe",
+  },
   /**
    * Service Bindings (communicate between multiple Workers)
    * https://developers.cloudflare.com/workers/wrangler/configuration/#service-bindings
