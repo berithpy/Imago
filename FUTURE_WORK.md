@@ -80,6 +80,29 @@ Storage byte counters can drift if photos are deleted without the counter being 
 
 ---
 
+## Composable Role-Based Navigation
+
+The client should move to a composable navigation system so the shell adapts cleanly to who is using the app instead of hardcoding separate nav patterns in each page.
+
+### Target behavior
+
+- **Super-admin navigation** should prioritize tenant and platform controls (tenant list, provisioning, platform health, global settings).
+- **Tenant-admin navigation** should prioritize day-to-day gallery operations (dashboard, gallery management, subscribers, usage/limits, account settings).
+- **Viewer navigation** should stay minimal and gallery-focused (gallery home, login/logout, download/export actions where permitted).
+
+### Implementation direction
+
+- Build a single navigation composition layer (e.g. role -> nav config) instead of role checks scattered through page components.
+- Keep shared shell primitives (layout, mobile drawer, top bar actions) reusable while swapping role-specific items.
+- Support contextual variants (for example, viewer inside a gallery vs. tenant in admin area) without duplicating entire layouts.
+- Ensure responsive behavior remains consistent across desktop and mobile.
+
+### Why this matters
+
+This reduces UI drift, makes auth/redirect bugs less likely, and gives us one place to evolve navigation when new roles or features are added.
+
+---
+
 ## Client Feedback and Rating Workflow
 
 Some galleries are not just for delivery, they are part of a selection process. A tenant may want to share a work-in-progress gallery with a client and ask for feedback before final delivery. Imago should support a lightweight review flow for email viewers so they can quickly mark photos and the photographer can see those choices inside the gallery tools.
@@ -151,6 +174,39 @@ This is a strong feature block and it fits the product well. The only real cauti
 ## Invitation Flow for Tenant Admins
 
 When a super-admin creates a new tenant, the first admin user for that tenant should receive an invitation email instead of having credentials created manually. The `invitation` table already exists in the schema from better-auth and can be used to implement this flow. The email should contain a link to set a password or accept the invitation, and the registration should be gated to that email address.
+
+---
+
+## Tenant Onboarding Flow
+
+Tenant onboarding needs to be treated as a first-class workflow, not just "tenant row created".
+
+### Near-term: manual onboarding (required now)
+
+The current super-admin flow should support assigning an actual admin email during tenant creation and guiding that person to first login.
+
+- Super-admin creates tenant with required admin email (and optional profile metadata).
+- System creates or reuses an invitation tied to that email and tenant.
+- Invitation email is sent with a clear "set password / accept invite" action.
+- Tenant remains in a visible onboarding state until first successful admin login.
+
+This closes the current gap where tenants can be created but no usable admin identity is attached.
+
+### Mid-term: automatic onboarding improvements
+
+- Add onboarding status tracking (`invited`, `accepted`, `active`, `expired`) so super-admins can monitor and resend invites.
+- Add safe retry/resend controls and expiry handling for stale invitations.
+- Add a clear audit trail for who created the tenant and who accepted onboarding.
+
+### Long-term: self-serve tenant creation (not enabled yet)
+
+Users should eventually be able to create their own tenant, but this should ship behind explicit controls and policy decisions.
+
+- Keep this feature disabled by default until billing/plan limits, abuse prevention, and domain/email verification policy are defined.
+- Design onboarding so the current manual flow and future self-serve flow share the same core invitation and activation pipeline.
+- Consider approval or allowlist gates for early rollout before open self-serve.
+
+This keeps us moving now with a reliable manual path while preserving a clean runway for eventual self-serve onboarding.
 
 ---
 
