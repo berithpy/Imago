@@ -19,10 +19,10 @@ viewerRoutes.post("/gallery/:slug/login", async (c) => {
   const body = await c.req.json<{ password?: string }>();
 
   const gallery = await c.env.DB.prepare(
-    `SELECT id, password_hash, is_public, name FROM galleries WHERE slug = ? AND deleted_at IS NULL${tSql}`
+    `SELECT id, tenant_id, password_hash, is_public, name FROM galleries WHERE slug = ? AND deleted_at IS NULL${tSql}`
   )
     .bind(slug, ...tBindings)
-    .first<{ id: string; password_hash: string; is_public: number; name: string }>();
+    .first<{ id: string; tenant_id: string | null; password_hash: string; is_public: number; name: string }>();
 
   if (!gallery) return c.json({ error: "Gallery not found" }, 404);
 
@@ -35,7 +35,7 @@ viewerRoutes.post("/gallery/:slug/login", async (c) => {
 
   const exp = Math.floor(Date.now() / 1000) + 60 * 60 * 24; // 24h
   const token = await sign(
-    { sub: "viewer", galleryId: gallery.id, exp },
+    { sub: "viewer", galleryId: gallery.id, tenantId: gallery.tenant_id, exp },
     c.env.JWT_SECRET
   );
 

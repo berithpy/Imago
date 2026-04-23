@@ -348,7 +348,9 @@ adminRoutes.get("/galleries/:id/photos", async (c) => {
 // ------------------------------------------------------------------
 adminRoutes.post("/galleries/:id/photos", async (c) => {
   const { id } = c.req.param();
-  const [tSql, tBindings] = tenantClause(c.get("tenantId"));
+  const tenantId = c.get("tenantId");
+  if (!tenantId) return c.json({ error: "Tenant required" }, 400);
+  const [tSql, tBindings] = tenantClause(tenantId);
 
   const gallery = await c.env.DB.prepare(
     `SELECT id, name, slug FROM galleries WHERE id = ?${tSql}`
@@ -363,7 +365,7 @@ adminRoutes.post("/galleries/:id/photos", async (c) => {
 
   const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
   const photoId = crypto.randomUUID();
-  const r2Key = `galleries/${id}/${photoId}.${ext}`;
+  const r2Key = `${tenantId}/galleries/${id}/${photoId}.${ext}`;
 
   // Stream directly to R2 — never buffer full file
   await c.env.IMAGES_BUCKET.put(r2Key, file.stream(), {
@@ -371,6 +373,7 @@ adminRoutes.post("/galleries/:id/photos", async (c) => {
     customMetadata: {
       originalName: file.name,
       galleryId: id,
+      tenantId,
     },
   });
 
@@ -437,16 +440,16 @@ adminRoutes.post("/galleries/:id/viewer-bypass", async (c) => {
   const [tSql, tBindings] = tenantClause(c.get("tenantId"));
 
   const gallery = await c.env.DB.prepare(
-    `SELECT id, slug FROM galleries WHERE id = ? AND deleted_at IS NULL${tSql}`
+    `SELECT id, slug, tenant_id FROM galleries WHERE id = ? AND deleted_at IS NULL${tSql}`
   )
     .bind(id, ...tBindings)
-    .first<{ id: string; slug: string }>();
+    .first<{ id: string; slug: string; tenant_id: string | null }>();
 
   if (!gallery) return c.json({ error: "Gallery not found" }, 404);
 
   const exp = Math.floor(Date.now() / 1000) + 60 * 60 * 24;
   const token = await sign(
-    { sub: "viewer", galleryId: gallery.id, exp },
+    { sub: "viewer", galleryId: gallery.id, tenantId: gallery.tenant_id, exp },
     c.env.JWT_SECRET
   );
 

@@ -97,4 +97,32 @@ describe("tenant middleware + scoped routes", () => {
     ).bind(gallery.id).first<{ tenant_id: string }>();
     expect(row?.tenant_id).toBe(tenant.id);
   });
+
+  it("POST /api/t/:tenantSlug/admin/galleries/:id/photos stores tenant-prefixed r2_key", async () => {
+    const tenant = await harness.seedTenant("photos-org");
+    const gallery = await harness.seedGallery({
+      slug: "photos-org-gallery",
+      isPublic: false,
+      tenantId: tenant.id,
+    });
+
+    const body = new FormData();
+    body.set("file", new File(["image"], "upload.jpg", { type: "image/jpeg" }));
+
+    const originalBucket = harness.env.IMAGES_BUCKET;
+    (harness.env as any).IMAGES_BUCKET = {
+      ...originalBucket,
+      put: vi.fn(async () => undefined),
+    };
+
+    const res = await harness.request(`/api/t/photos-org/admin/galleries/${gallery.id}/photos`, {
+      method: "POST",
+      body,
+    });
+    (harness.env as any).IMAGES_BUCKET = originalBucket;
+    expect(res.status).toBe(201);
+
+    const payload = (await res.json()) as { photo: { r2_key: string } };
+    expect(payload.photo.r2_key.startsWith(`${tenant.id}/galleries/${gallery.id}/`)).toBe(true);
+  });
 });

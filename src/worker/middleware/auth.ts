@@ -7,6 +7,7 @@ import { auth } from "../lib/auth";
 export type ViewerJWTPayload = {
   sub: "viewer";
   galleryId: string;
+  tenantId?: string | null;
   exp: number;
 };
 

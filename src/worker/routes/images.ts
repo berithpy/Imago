@@ -1,8 +1,13 @@
 import { Hono } from "hono";
 import { Bindings } from "../index";
 import { requireViewerOrAdmin } from "../middleware/auth";
+import type { ViewerJWTPayload } from "../middleware/auth";
+import type { TenantVariables } from "../middleware/tenant";
 
-export const imageRoutes = new Hono<{ Bindings: Bindings }>();
+export const imageRoutes = new Hono<{
+  Bindings: Bindings;
+  Variables: TenantVariables & { viewerPayload?: ViewerJWTPayload };
+}>();
 
 // Dimensions and quality per variant
 const VARIANT_CONFIG: Record<string, { width: number; quality: number }> = {
@@ -18,6 +23,27 @@ const VARIANT_CONFIG: Record<string, { width: number; quality: number }> = {
 imageRoutes.get("/:key{.+}", requireViewerOrAdmin as any, async (c) => {
   const key = c.req.param("key");
   const variant = c.req.query("variant") ?? "thumb";
+
+  const slashIndex = key.indexOf("/");
+  if (slashIndex <= 0) return c.notFound();
+  const keyTenantId = key.slice(0, slashIndex);
+
+  const scopedTenantId = c.get("tenantId");
+  if (scopedTenantId && scopedTenantId !== keyTenantId) return c.notFound();
+
+  const viewerPayload = c.get("viewerPayload");
+  if (viewerPayload) {
+    if (viewerPayload.tenantId) {
+      if (viewerPayload.tenantId !== keyTenantId) return c.notFound();
+    } else {
+      const gallery = await c.env.DB.prepare(
+        "SELECT tenant_id FROM galleries WHERE id = ? AND deleted_at IS NULL"
+      )
+        .bind(viewerPayload.galleryId)
+        .first<{ tenant_id: string | null }>();
+      if (!gallery?.tenant_id || gallery.tenant_id !== keyTenantId) return c.notFound();
+    }
+  }
 
   const object = await c.env.IMAGES_BUCKET.get(key);
   if (!object) return c.notFound();
