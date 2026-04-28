@@ -11,6 +11,7 @@ export type Gallery = {
   name: string;
   slug: string;
   is_public: number;
+  share_preview_enabled: number;
   banner_photo_id: string | null;
   banner_r2_key: string | null;
   event_date: number | null;

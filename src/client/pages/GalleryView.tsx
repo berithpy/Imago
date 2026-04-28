@@ -95,6 +95,7 @@ export function GalleryView() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expired, setExpired] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
   const [lightbox, setLightbox] = useState<Photo | null>(null);
   const [galleryName, setGalleryName] = useState("");
   const [eventDate, setEventDate] = useState<number | null>(null);
@@ -166,11 +167,13 @@ export function GalleryView() {
     async function init() {
       setLoading(true);
 
-      // 1. Load gallery metadata — handle 410 (expired) and 404
+      // 1. Load gallery metadata — handle 410 (expired), 404 (not found), and network errors
       try {
         const metaRes = await fetch(`${apiBase}/galleries/${gallerySlug}`);
         if (cancelled) return;
         if (metaRes.status === 410) { setExpired(true); setLoading(false); return; }
+        if (metaRes.status === 404) { setError("Gallery not found."); setLoading(false); return; }
+        if (!metaRes.ok) { setError("Failed to load gallery."); setLoading(false); return; }
         const d = await metaRes.json() as { gallery?: { name: string; is_public: number; banner_r2_key: string | null; event_date: number | null } };
         if (cancelled) return;
         isPublicGallery = !!d.gallery?.is_public;
@@ -179,7 +182,8 @@ export function GalleryView() {
         setBannerKey(d.gallery?.banner_r2_key ?? null);
         setEventDate(d.gallery?.event_date ?? null);
       } catch {
-        // ignore metadata errors — photo fetch will surface auth issues
+        if (!cancelled) { setError("Failed to load gallery."); setLoading(false); }
+        return;
       }
 
       // 2. Fetch photos — middleware allows public galleries through without a token
@@ -206,7 +210,7 @@ export function GalleryView() {
 
     init();
     return () => { cancelled = true; };
-  }, [gallerySlug, navigate, fetchPhotos, apiBase, routeBase]);
+  }, [gallerySlug, navigate, fetchPhotos, apiBase, routeBase, retryCount]);
 
   const loadMore = useCallback(async () => {
     if (!nextCursor || loadingMoreRef.current) return;
@@ -434,13 +438,7 @@ export function GalleryView() {
           </div>
 
           {loading && <SpinnerOverlay />}
-          {error && <ErrorMessage message={error} onRetry={() => {
-            setLoading(true);
-            fetchPhotos()
-              .then((data) => { if (!data.needsAuth) { setPhotos(data.photos); setNextCursor(data.nextCursor); setTotal(data.total); } })
-              .catch(() => setError("Failed to load photos"))
-              .finally(() => setLoading(false));
-          }} />}
+          {error && <ErrorMessage message={error} onRetry={() => { setError(null); setRetryCount((c) => c + 1); }} />}
 
           {/* Photo grid */}
           {!loading && (

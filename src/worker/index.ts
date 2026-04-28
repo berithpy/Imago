@@ -8,6 +8,8 @@ import { adminRoutes } from "./routes/admin";
 import { subscribeRoutes } from "./routes/subscribe";
 import { requireTenant, type TenantVariables } from "./middleware/tenant";
 import { tenantsRoutes } from "./routes/tenants";
+import { ogImageRoutes } from "./routes/ogImage";
+import { ogPreviewRoutes } from "./routes/ogPreview";
 
 export type Bindings = {
   IMAGES_BUCKET: R2Bucket;
@@ -49,6 +51,7 @@ app.route("/api/admin/tenants", tenantsRoutes);
 app.route("/api/galleries", galleryRoutes);
 app.route("/api/images", imageRoutes);
 app.route("/api/subscribe", subscribeRoutes);
+app.route("/api/og", ogImageRoutes);
 
 // Tenant-scoped routes: /api/t/:tenantSlug/{admin,viewer,galleries,images,subscribe}
 const tenantApp = new Hono<{ Bindings: Bindings; Variables: TenantVariables }>();
@@ -62,5 +65,10 @@ app.route("/api/t/:tenantSlug", tenantApp);
 
 // Health check
 app.get("/api/health", (c) => c.json({ ok: true }));
+
+// SPA fallthrough: anything that did not match an /api route is served by
+// the asset pipeline. For gallery URLs we proxy through HTMLRewriter to
+// inject Open Graph / Twitter Card meta tags so shared links unfurl.
+app.route("/", ogPreviewRoutes);
 
 export default app;

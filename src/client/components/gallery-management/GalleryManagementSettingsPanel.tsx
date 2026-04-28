@@ -20,6 +20,7 @@ export function GalleryManagementSettingsPanel({
   const [settingsName, setSettingsName] = useState("");
   const [settingsEventDate, setSettingsEventDate] = useState("");
   const [settingsExpiresAt, setSettingsExpiresAt] = useState("");
+  const [sharePreviewEnabled, setSharePreviewEnabled] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const { apiBase } = useTenant();
 
@@ -27,6 +28,7 @@ export function GalleryManagementSettingsPanel({
     setSettingsName(gallery.name);
     setSettingsEventDate(gallery.event_date ? toDateInputValue(gallery.event_date) : "");
     setSettingsExpiresAt(gallery.expires_at ? toDateInputValue(gallery.expires_at) : "");
+    setSharePreviewEnabled(!!gallery.share_preview_enabled);
   }, [gallery]);
 
   async function handleSaveSettings(e: React.FormEvent) {
@@ -45,6 +47,7 @@ export function GalleryManagementSettingsPanel({
           expires_at: settingsExpiresAt
             ? Math.floor(new Date(settingsExpiresAt).getTime() / 1000)
             : null,
+          share_preview_enabled: sharePreviewEnabled,
         }),
       });
 
@@ -57,6 +60,7 @@ export function GalleryManagementSettingsPanel({
         expires_at: settingsExpiresAt
           ? Math.floor(new Date(settingsExpiresAt).getTime() / 1000)
           : null,
+        share_preview_enabled: sharePreviewEnabled ? 1 : 0,
       }));
       onClose();
     } finally {
@@ -139,6 +143,35 @@ export function GalleryManagementSettingsPanel({
           />
         </div>
       </div>
+      <label
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 10,
+          padding: "10px 12px",
+          background: "var(--color-bg)",
+          border: "1px solid var(--color-border)",
+          borderRadius: "var(--radius)",
+          cursor: "pointer",
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={sharePreviewEnabled}
+          onChange={(e) => setSharePreviewEnabled(e.target.checked)}
+          style={{ marginTop: 3 }}
+        />
+        <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <span style={{ fontSize: "0.9rem", color: "var(--color-text)" }}>
+            Show preview when this link is shared
+          </span>
+          <span style={{ fontSize: "0.78rem", color: "var(--color-text-muted)" }}>
+            Lets WhatsApp, Discord, iMessage, etc. show the gallery title and a banner
+            thumbnail when someone pastes the link. The thumbnail becomes publicly viewable
+            even for private galleries.
+          </span>
+        </span>
+      </label>
       <div style={{ display: "flex", gap: 10 }}>
         <button
           type="submit"

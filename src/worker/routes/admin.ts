@@ -99,7 +99,7 @@ adminRoutes.get("/galleries", async (c) => {
 
   const tenantId: string | undefined = c.get("tenantId");
   const [tSql, tBindings] = tenantClause(tenantId);
-  const SELECT = "SELECT id, name, slug, description, is_public, banner_photo_id, event_date, expires_at, deleted_at, created_at FROM galleries";
+  const SELECT = "SELECT id, name, slug, description, is_public, share_preview_enabled, banner_photo_id, event_date, expires_at, deleted_at, created_at FROM galleries";
 
   let results;
   if (q) {
@@ -243,15 +243,16 @@ adminRoutes.patch("/galleries/:id/visibility", async (c) => {
   return c.json({ ok: true });
 });
 
-// Update general settings (name, description, event_date, expires_at)
+// Update general settings (name, description, event_date, expires_at, share_preview_enabled)
 adminRoutes.patch("/galleries/:id/settings", async (c) => {
   const { id } = c.req.param();
   const [tSql, tBindings] = tenantClause(c.get("tenantId"));
-  const { name, description, event_date, expires_at } = await c.req.json<{
+  const { name, description, event_date, expires_at, share_preview_enabled } = await c.req.json<{
     name?: string;
     description?: string | null;
     event_date?: number | null;
     expires_at?: number | null;
+    share_preview_enabled?: boolean;
   }>();
 
   const fields: string[] = [];
@@ -261,6 +262,10 @@ adminRoutes.patch("/galleries/:id/settings", async (c) => {
   if (description !== undefined) { fields.push("description = ?"); values.push(description); }
   if (event_date !== undefined) { fields.push("event_date = ?"); values.push(event_date); }
   if (expires_at !== undefined) { fields.push("expires_at = ?"); values.push(expires_at); }
+  if (share_preview_enabled !== undefined) {
+    fields.push("share_preview_enabled = ?");
+    values.push(share_preview_enabled ? 1 : 0);
+  }
 
   if (!fields.length) return c.json({ error: "Nothing to update" }, 400);
 
@@ -324,14 +329,14 @@ adminRoutes.get("/galleries/:id/photos", async (c) => {
   const { id } = c.req.param();
   const [tSql, tBindings] = tenantClause(c.get("tenantId"));
   const gallery = await c.env.DB.prepare(
-    `SELECT g.id, g.name, g.slug, g.is_public, g.banner_photo_id, p.r2_key AS banner_r2_key,
+    `SELECT g.id, g.name, g.slug, g.is_public, g.share_preview_enabled, g.banner_photo_id, p.r2_key AS banner_r2_key,
             g.event_date, g.expires_at
      FROM galleries g
      LEFT JOIN photos p ON p.id = g.banner_photo_id
      WHERE g.id = ?${tSql}`
   )
     .bind(id, ...tBindings)
-    .first<{ id: string; name: string; slug: string; is_public: number; banner_photo_id: string | null; banner_r2_key: string | null; event_date: number | null; expires_at: number | null }>();
+    .first<{ id: string; name: string; slug: string; is_public: number; share_preview_enabled: number; banner_photo_id: string | null; banner_r2_key: string | null; event_date: number | null; expires_at: number | null }>();
   if (!gallery) return c.json({ error: "Gallery not found" }, 404);
 
   const { results } = await c.env.DB.prepare(

@@ -10,10 +10,13 @@ export const imageRoutes = new Hono<{
 }>();
 
 // Dimensions and quality per variant
-const VARIANT_CONFIG: Record<string, { width: number; quality: number }> = {
+export const VARIANT_CONFIG: Record<string, { width: number; quality: number }> = {
   thumb: { width: 800, quality: 85 },
   banner: { width: 2400, quality: 90 },
   preview: { width: 2000, quality: 90 },
+  // Open Graph / Twitter Card preview thumbnail. Aspect ratio is preserved
+  // by the IMAGES binding; social platforms handle non-1.91:1 ratios fine.
+  og: { width: 1200, quality: 80 },
 };
 
 // ------------------------------------------------------------------

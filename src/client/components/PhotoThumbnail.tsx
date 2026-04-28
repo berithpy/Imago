@@ -29,6 +29,7 @@ export function PhotoThumbnail({
   filename,
 }: PhotoThumbnailProps) {
   const [loaded, setLoaded] = useState(false);
+  const [errored, setErrored] = useState(false);
 
   if (fit === "cover") {
     return (
@@ -45,12 +46,14 @@ export function PhotoThumbnail({
         onClick={onClick}
       >
         {/* Skeleton shimmer until image loads */}
-        {!loaded && <div style={skeletonStyle} />}
+        {!loaded && !errored && <div style={skeletonStyle} />}
+        {errored && <div style={errorPlaceholderStyle}>⚠</div>}
         <img
           src={`/api/images/${r2Key}?variant=thumb`}
           alt={alt}
           loading="lazy"
           onLoad={() => setLoaded(true)}
+          onError={() => setErrored(true)}
           style={{
             width: "100%",
             height: "100%",
@@ -77,14 +80,16 @@ export function PhotoThumbnail({
       }}
       onClick={onClick}
     >
-      {!loaded && (
+      {!loaded && !errored && (
         <div style={{ ...skeletonStyle, aspectRatio: "3/2", position: "relative" }} />
       )}
+      {errored && <div style={{ ...errorPlaceholderStyle, aspectRatio: "3/2" }}>⚠</div>}
       <img
         src={`/api/images/${r2Key}?variant=thumb`}
         alt={alt}
         loading="lazy"
         onLoad={() => setLoaded(true)}
+        onError={() => setErrored(true)}
         style={{
           width: "100%",
           display: "block",
@@ -119,6 +124,16 @@ const badgeStyle: CSSProperties = {
   userSelect: "none",
   whiteSpace: "nowrap",
   zIndex: 2,
+};
+
+const errorPlaceholderStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "var(--color-surface)",
+  color: "var(--color-text-muted)",
+  fontSize: "1.25rem",
+  width: "100%",
 };
 
 const skeletonStyle: CSSProperties = {

@@ -1,0 +1,1 @@
+ALTER TABLE `galleries` ADD `share_preview_enabled` integer DEFAULT false NOT NULL;

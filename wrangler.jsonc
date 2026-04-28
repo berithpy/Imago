@@ -14,7 +14,10 @@
     "binding": "ASSETS",
     "directory": "./dist/client",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*"],
+    // Worker handles all requests so it can inject per-gallery Open Graph
+    // meta tags into the SPA index.html. The worker proxies non-matching
+    // requests back to ASSETS.fetch unchanged.
+    "run_worker_first": true,
   },
   "observability": {
     "enabled": true,

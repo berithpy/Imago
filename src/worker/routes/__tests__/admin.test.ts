@@ -243,6 +243,34 @@ describe("admin routes", () => {
     expect(row?.is_public).toBe(1);
   });
 
+  it("PATCH /settings can toggle share_preview_enabled", async () => {
+    const gallery = await harness.seedGallery({ slug: "share-preview-gal", isPublic: false, password: "pw1234" });
+
+    const enableRes = await harness.request(`/api/admin/galleries/${gallery.id}/settings`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ share_preview_enabled: true }),
+    });
+    expect(enableRes.status).toBe(200);
+
+    const enabledRow = await harness.env.DB.prepare(
+      "SELECT share_preview_enabled FROM galleries WHERE id = ?"
+    ).bind(gallery.id).first<{ share_preview_enabled: number }>();
+    expect(enabledRow?.share_preview_enabled).toBe(1);
+
+    const disableRes = await harness.request(`/api/admin/galleries/${gallery.id}/settings`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ share_preview_enabled: false }),
+    });
+    expect(disableRes.status).toBe(200);
+
+    const disabledRow = await harness.env.DB.prepare(
+      "SELECT share_preview_enabled FROM galleries WHERE id = ?"
+    ).bind(gallery.id).first<{ share_preview_enabled: number }>();
+    expect(disabledRow?.share_preview_enabled).toBe(0);
+  });
+
   it("PATCH /banner sets banner photo id", async () => {
     const gallery = await harness.seedGallery({ slug: "banner-gal", isPublic: false });
     const photoId = crypto.randomUUID();

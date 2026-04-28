@@ -109,6 +109,10 @@ export const galleries = sqliteTable("galleries", {
   passwordHash: text("password_hash").notNull(),
   description: text("description"),
   isPublic: integer("is_public", { mode: "boolean" }).notNull().default(false),
+  // When true, allow public link-preview unfurls (OG/Twitter Card meta tags +
+  // banner thumbnail) for this gallery, even if it is private. Default false;
+  // backfill sets true for existing public galleries (see migration 0007).
+  sharePreviewEnabled: integer("share_preview_enabled", { mode: "boolean" }).notNull().default(false),
   // Nullable FK to photos.id — no DDL constraint to avoid circular dependency
   bannerPhotoId: text("banner_photo_id"),
   deletedAt: integer("deleted_at"),

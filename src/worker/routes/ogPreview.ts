@@ -1,0 +1,157 @@
+import { Hono } from "hono";
+import { Bindings } from "../index";
+
+export const ogPreviewRoutes = new Hono<{ Bindings: Bindings }>();
+
+// Reserved top-level paths under /:tenantSlug/:gallerySlug that are NOT a
+// gallery view (and so must skip preview lookup). Right now only `login`,
+// but kept as a set for easy extension.
+const RESERVED_GALLERY_SUBPATHS = new Set(["login"]);
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+// Truncate descriptions for OG/Twitter (keep social previews terse).
+function truncate(value: string, max = 200): string {
+  if (value.length <= max) return value;
+  return value.slice(0, max - 1).trimEnd() + "…";
+}
+
+type GalleryPreview = {
+  id: string;
+  name: string;
+  description: string | null;
+  is_public: number;
+  share_preview_enabled: number;
+  banner_photo_id: string | null;
+  has_photos: number;
+  tenant_name: string;
+};
+
+// ------------------------------------------------------------------
+// SPA fallthrough handler. Matches every non-/api request that the
+// asset pipeline would otherwise serve as `index.html`. We:
+//   1. Always proxy through to ASSETS.fetch to get the SPA shell.
+//   2. If the URL is a gallery view we know about, inject per-gallery
+//      OG/Twitter meta tags via HTMLRewriter.
+//   3. Otherwise, the response passes through unchanged so non-gallery
+//      pages keep the static generic Imago preview from index.html.
+// ------------------------------------------------------------------
+ogPreviewRoutes.all("*", async (c) => {
+  const url = new URL(c.req.url);
+  const assetResponse = await c.env.ASSETS.fetch(c.req.raw);
+
+  // Only rewrite HTML responses (the SPA fallback). Static assets pass through.
+  const contentType = assetResponse.headers.get("content-type") ?? "";
+  if (!contentType.includes("text/html")) {
+    return assetResponse;
+  }
+
+  const segments = url.pathname.split("/").filter(Boolean);
+  if (segments.length < 2) return assetResponse;
+
+  const [tenantSlug, gallerySlug, maybeSubpath] = segments;
+  if (maybeSubpath && RESERVED_GALLERY_SUBPATHS.has(maybeSubpath)) {
+    return assetResponse;
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const gallery = await c.env.DB.prepare(
+    `SELECT g.id, g.name, g.description, g.is_public, g.share_preview_enabled,
+            g.banner_photo_id, t.name AS tenant_name,
+            EXISTS(SELECT 1 FROM photos p WHERE p.gallery_id = g.id) AS has_photos
+     FROM galleries g
+     JOIN tenants t ON t.id = g.tenant_id
+     WHERE g.slug = ?
+       AND t.slug = ?
+       AND t.deleted_at IS NULL
+       AND g.deleted_at IS NULL
+       AND (g.expires_at IS NULL OR g.expires_at > ?)`
+  )
+    .bind(gallerySlug, tenantSlug, now)
+    .first<GalleryPreview>();
+
+  if (!gallery) return assetResponse;
+  // Private galleries without explicit opt-in stay generic — no leak.
+  if (!gallery.share_preview_enabled) return assetResponse;
+
+  const appUrl = (c.env.APP_URL ?? `${url.protocol}//${url.host}`).replace(/\/$/, "");
+  const canonicalUrl = `${appUrl}/${tenantSlug}/${gallerySlug}`;
+  const title = `${gallery.name} — ${gallery.tenant_name}`;
+  const description = gallery.description?.trim()
+    ? truncate(gallery.description.trim())
+    : `View the ${gallery.name} gallery on ${gallery.tenant_name}.`;
+  const imageUrl = gallery.has_photos
+    ? `${appUrl}/api/og/${tenantSlug}/${gallerySlug}/image`
+    : null;
+
+  const metaTags: string[] = [
+    `<meta property="og:title" content="${escapeHtml(title)}">`,
+    `<meta property="og:description" content="${escapeHtml(description)}">`,
+    `<meta property="og:type" content="website">`,
+    `<meta property="og:url" content="${escapeHtml(canonicalUrl)}">`,
+    `<meta property="og:site_name" content="${escapeHtml(gallery.tenant_name)}">`,
+    `<meta name="twitter:card" content="${imageUrl ? "summary_large_image" : "summary"}">`,
+    `<meta name="twitter:title" content="${escapeHtml(title)}">`,
+    `<meta name="twitter:description" content="${escapeHtml(description)}">`,
+    `<meta name="description" content="${escapeHtml(description)}">`,
+  ];
+
+  if (imageUrl) {
+    metaTags.push(
+      `<meta property="og:image" content="${escapeHtml(imageUrl)}">`,
+      `<meta property="og:image:width" content="1200">`,
+      `<meta name="twitter:image" content="${escapeHtml(imageUrl)}">`,
+    );
+  }
+
+  const escapedTitle = escapeHtml(title);
+  const metaBlock = metaTags.join("\n    ");
+
+  // Use the native streaming HTMLRewriter when available (workerd/Cloudflare).
+  // Fall back to a small string-based rewrite for Node (tests, local tooling).
+  if (typeof HTMLRewriter !== "undefined") {
+    const rewriter = new HTMLRewriter()
+      .on("title", {
+        element(el) {
+          el.setInnerContent(escapedTitle);
+        },
+      })
+      .on("head", {
+        element(el) {
+          el.append(metaBlock, { html: true });
+        },
+      });
+
+    const rewritten = rewriter.transform(assetResponse);
+    const headers = new Headers(rewritten.headers);
+    headers.delete("etag");
+    return new Response(rewritten.body, {
+      status: rewritten.status,
+      headers,
+    });
+  }
+
+  const sourceHtml = await assetResponse.text();
+  const withTitle = sourceHtml.replace(
+    /<title>[\s\S]*?<\/title>/i,
+    `<title>${escapedTitle}</title>`
+  );
+  const withMeta = withTitle.replace(
+    /<\/head>/i,
+    `    ${metaBlock}\n  </head>`
+  );
+  const headers = new Headers(assetResponse.headers);
+  headers.delete("etag");
+  headers.set("content-type", "text/html; charset=utf-8");
+  return new Response(withMeta, {
+    status: assetResponse.status,
+    headers,
+  });
+});
