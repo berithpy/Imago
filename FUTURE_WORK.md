@@ -245,3 +245,9 @@ Once the client module is stable, swapping the underlying `fetch` for Hono's `hc
 The work is incremental and does not require a big-bang migration. Introduce the client module and one domain wrapper, migrate one page (the admin dashboards are the highest-value target since they already exhibited a redirect-loop bug), then expand from there. React Query and `hc` can each be adopted later without rewriting consumers.
 
 
+## Admin Gallery page small improvmenet
+We should add the whole link on the "link button" and a share button on the viewer and admin gallery pages
+
+
+## Tailwind migration
+Use tailwind instead of our current css system, this is easier for the agent

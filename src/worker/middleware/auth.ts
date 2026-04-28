@@ -106,6 +106,54 @@ export async function requireViewer(
 }
 
 /**
+ * Authenticate a request as either a better-auth admin session or a viewer JWT.
+ * Returns either an error Response (to return immediately) or an `ok` result
+ * with the optional viewer payload. Does not consult public-gallery state —
+ * callers handle public bypass before invoking this.
+ */
+export async function authenticateViewerOrAdmin(
+  c: Context<{ Bindings: Bindings; Variables: Record<string, unknown> }>
+): Promise<
+  | { ok: true; viewerPayload?: ViewerJWTPayload; isAdmin: boolean }
+  | { ok: false; response: Response }
+> {
+  // Check admin session first
+  try {
+    const origin = new URL(c.req.raw.url).origin;
+    const session = await auth(c.env, origin).api.getSession({
+      headers: c.req.raw.headers,
+    });
+    if (session) {
+      return { ok: true, isAdmin: true };
+    }
+  } catch {
+    // fall through to viewer JWT check
+  }
+
+  // Fall back to viewer JWT
+  const token = getCookie(c, "viewer_token");
+  if (!token) return { ok: false, response: c.json({ error: "Unauthorized" }, 401) };
+
+  const jwtSecret = (c.env as { JWT_SECRET?: string }).JWT_SECRET;
+  if (!jwtSecret) {
+    return { ok: false, response: c.json({ error: "Server configuration error" }, 500) };
+  }
+
+  let payload: ViewerJWTPayload;
+  try {
+    payload = (await verify(token, jwtSecret, "HS256")) as ViewerJWTPayload;
+  } catch {
+    return { ok: false, response: c.json({ error: "Invalid or expired token" }, 401) };
+  }
+
+  if (payload.sub !== "viewer") {
+    return { ok: false, response: c.json({ error: "Forbidden" }, 403) };
+  }
+
+  return { ok: true, viewerPayload: payload, isAdmin: false };
+}
+
+/**
  * Middleware: require either a valid admin session (better-auth) OR a valid viewer JWT.
  * Used for image serving so admins can view images without a viewer token.
  */
@@ -120,40 +168,8 @@ export async function requireViewerOrAdmin(
     return;
   }
 
-  // Check admin session first
-  try {
-    const origin = new URL(c.req.raw.url).origin;
-    const session = await auth(c.env, origin).api.getSession({
-      headers: c.req.raw.headers,
-    });
-    if (session) {
-      await next();
-      return;
-    }
-  } catch {
-    // fall through to viewer JWT check
-  }
-
-  // Fall back to viewer JWT
-  const token = getCookie(c, "viewer_token");
-  if (!token) return c.json({ error: "Unauthorized" }, 401);
-
-  // Read JWT secret from environment with a narrow assertion to avoid relying
-  // on a removed binding type, and fail explicitly if it's not configured.
-  const jwtSecret = (c.env as { JWT_SECRET?: string }).JWT_SECRET;
-  if (!jwtSecret) {
-    return c.json({ error: "Server configuration error" }, 500);
-  }
-
-  let payload: ViewerJWTPayload;
-  try {
-    payload = (await verify(token, jwtSecret, "HS256")) as ViewerJWTPayload;
-  } catch {
-    return c.json({ error: "Invalid or expired token" }, 401);
-  }
-
-  if (payload.sub !== "viewer") return c.json({ error: "Forbidden" }, 403);
-
-  c.set("viewerPayload", payload);
+  const result = await authenticateViewerOrAdmin(c);
+  if (!result.ok) return result.response;
+  if (result.viewerPayload) c.set("viewerPayload", result.viewerPayload);
   await next();
 }

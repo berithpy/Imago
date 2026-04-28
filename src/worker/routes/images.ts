@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { Bindings } from "../index";
-import { requireViewerOrAdmin } from "../middleware/auth";
+import { authenticateViewerOrAdmin } from "../middleware/auth";
 import type { ViewerJWTPayload } from "../middleware/auth";
 import type { TenantVariables } from "../middleware/tenant";
 
@@ -20,7 +20,7 @@ const VARIANT_CONFIG: Record<string, { width: number; quality: number }> = {
 // Protected: serve an image from R2, transformed via Cloudflare Images
 // Query params: ?variant=thumb (default) | banner | preview | full
 // ------------------------------------------------------------------
-imageRoutes.get("/:key{.+}", requireViewerOrAdmin as any, async (c) => {
+imageRoutes.get("/:key{.+}", async (c) => {
   const key = c.req.param("key");
   const variant = c.req.query("variant") ?? "thumb";
 
@@ -31,7 +31,28 @@ imageRoutes.get("/:key{.+}", requireViewerOrAdmin as any, async (c) => {
   const scopedTenantId = c.get("tenantId");
   if (scopedTenantId && scopedTenantId !== keyTenantId) return c.notFound();
 
-  const viewerPayload = c.get("viewerPayload");
+  // Look up the photo's gallery so we can bypass auth for public galleries.
+  // If the photo is not in the DB we fall through to normal auth (preserves
+  // 401 behavior for unknown keys without a session).
+  const photoGallery = await c.env.DB.prepare(
+    `SELECT g.id AS gallery_id, g.is_public, g.tenant_id
+     FROM photos p
+     JOIN galleries g ON g.id = p.gallery_id
+     WHERE p.r2_key = ? AND g.deleted_at IS NULL`
+  )
+    .bind(key)
+    .first<{ gallery_id: string; is_public: number; tenant_id: string | null }>();
+
+  let viewerPayload: ViewerJWTPayload | undefined;
+  const isPublic = !!photoGallery?.is_public &&
+    (!photoGallery.tenant_id || photoGallery.tenant_id === keyTenantId);
+
+  if (!isPublic) {
+    const auth = await authenticateViewerOrAdmin(c);
+    if (!auth.ok) return auth.response;
+    viewerPayload = auth.viewerPayload;
+  }
+
   if (viewerPayload) {
     if (viewerPayload.tenantId) {
       if (viewerPayload.tenantId !== keyTenantId) return c.notFound();
