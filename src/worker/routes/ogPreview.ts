@@ -114,10 +114,29 @@ ogPreviewRoutes.all("*", async (c) => {
   const escapedTitle = escapeHtml(title);
   const metaBlock = metaTags.join("\n    ");
 
+  // Selectors for the static fallback tags in index.html that we want to
+  // strip when injecting gallery-specific replacements (so unfurls don't see
+  // duplicate og:title / twitter:title etc.).
+  const META_SELECTORS_TO_STRIP = [
+    'meta[name="description"]',
+    'meta[property="og:title"]',
+    'meta[property="og:description"]',
+    'meta[property="og:type"]',
+    'meta[property="og:url"]',
+    'meta[property="og:site_name"]',
+    'meta[property="og:image"]',
+    'meta[property="og:image:width"]',
+    'meta[property="og:image:height"]',
+    'meta[name="twitter:card"]',
+    'meta[name="twitter:title"]',
+    'meta[name="twitter:description"]',
+    'meta[name="twitter:image"]',
+  ];
+
   // Use the native streaming HTMLRewriter when available (workerd/Cloudflare).
   // Fall back to a small string-based rewrite for Node (tests, local tooling).
   if (typeof HTMLRewriter !== "undefined") {
-    const rewriter = new HTMLRewriter()
+    let rewriter = new HTMLRewriter()
       .on("title", {
         element(el) {
           el.setInnerContent(escapedTitle);
@@ -129,9 +148,18 @@ ogPreviewRoutes.all("*", async (c) => {
         },
       });
 
+    for (const selector of META_SELECTORS_TO_STRIP) {
+      rewriter = rewriter.on(selector, {
+        element(el) {
+          el.remove();
+        },
+      });
+    }
+
     const rewritten = rewriter.transform(assetResponse);
     const headers = new Headers(rewritten.headers);
     headers.delete("etag");
+    headers.set("content-type", "text/html; charset=utf-8");
     return new Response(rewritten.body, {
       status: rewritten.status,
       headers,
@@ -143,7 +171,12 @@ ogPreviewRoutes.all("*", async (c) => {
     /<title>[\s\S]*?<\/title>/i,
     `<title>${escapedTitle}</title>`
   );
-  const withMeta = withTitle.replace(
+  // Strip the static fallback meta tags so we don't end up with duplicates.
+  const stripped = withTitle.replace(
+    /\s*<meta\s+(?:name|property)="(?:description|og:[a-z_:]+|twitter:[a-z]+)"[^>]*>/gi,
+    ""
+  );
+  const withMeta = stripped.replace(
     /<\/head>/i,
     `    ${metaBlock}\n  </head>`
   );

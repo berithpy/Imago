@@ -3,8 +3,23 @@ import { createWorkerTestHarness, type WorkerTestHarness } from "./testHarness";
 
 let harness: WorkerTestHarness;
 
+// Mirror the real index.html: includes the full set of generic-fallback OG /
+// Twitter meta tags so we can assert the rewriter strips them when injecting
+// per-gallery overrides (otherwise crawlers would see duplicates).
 const FAKE_INDEX_HTML = `<!doctype html>
-<html><head><title>Imago</title><meta name="description" content="default"></head>
+<html><head>
+<title>Imago</title>
+<meta name="description" content="Imago — a self-hosted photography gallery." />
+<meta property="og:title" content="Imago" />
+<meta property="og:description" content="A self-hosted photography gallery." />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="Imago" />
+<meta property="og:image" content="/og-default.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Imago" />
+<meta name="twitter:description" content="A self-hosted photography gallery." />
+<meta name="twitter:image" content="/og-default.png" />
+</head>
 <body><div id="root"></div></body></html>`;
 
 function stubAssets(html: string = FAKE_INDEX_HTML, contentType: string = "text/html") {
@@ -150,10 +165,8 @@ describe("og preview HTML rewriter", () => {
     restore();
 
     const html = await res.text();
-    expect(html).not.toContain("Gallery private");
-    expect(html).not.toContain("og:title");
-    // Default index.html title is preserved
-    expect(html).toContain("<title>Imago</title>");
+    // Pass-through: response body equals the original index.html exactly.
+    expect(html).toBe(FAKE_INDEX_HTML);
   });
 
   it("injects preview for a private gallery when share_preview_enabled is true", async () => {
@@ -190,8 +203,7 @@ describe("og preview HTML rewriter", () => {
     restore();
 
     const html = await res.text();
-    expect(html).not.toContain("Gallery deleted");
-    expect(html).toContain("<title>Imago</title>");
+    expect(html).toBe(FAKE_INDEX_HTML);
   });
 
   it("passes through expired galleries", async () => {
@@ -209,8 +221,7 @@ describe("og preview HTML rewriter", () => {
     restore();
 
     const html = await res.text();
-    expect(html).toContain("<title>Imago</title>");
-    expect(html).not.toContain("og:title");
+    expect(html).toBe(FAKE_INDEX_HTML);
   });
 
   it("passes through the /:tenantSlug/:gallerySlug/login subpath", async () => {
@@ -228,8 +239,7 @@ describe("og preview HTML rewriter", () => {
     restore();
 
     const html = await res.text();
-    expect(html).toContain("<title>Imago</title>");
-    expect(html).not.toContain("og:title");
+    expect(html).toBe(FAKE_INDEX_HTML);
   });
 
   it("passes through tenant index pages", async () => {
@@ -246,7 +256,7 @@ describe("og preview HTML rewriter", () => {
     restore();
 
     const html = await res.text();
-    expect(html).toContain("<title>Imago</title>");
+    expect(html).toBe(FAKE_INDEX_HTML);
   });
 
   it("passes through static asset requests untouched", async () => {
@@ -255,5 +265,48 @@ describe("og preview HTML rewriter", () => {
     restore();
 
     expect(await res.text()).toBe("static");
+  });
+
+  it("strips static fallback meta tags so each tag appears exactly once after injection", async () => {
+    await seedGallery({
+      tenantSlug: "acme",
+      tenantName: "Acme Studio",
+      gallerySlug: "wedding",
+      galleryName: "Smith Wedding",
+      description: "A sunny day in the park.",
+      isPublic: true,
+      sharePreviewEnabled: true,
+      withPhotos: true,
+    });
+
+    const restore = stubAssets();
+    const res = await harness.request("/acme/wedding");
+    restore();
+
+    const html = await res.text();
+
+    function count(pattern: RegExp): number {
+      return (html.match(pattern) ?? []).length;
+    }
+
+    // Each per-gallery tag should appear exactly once — the static fallback
+    // version from index.html must be stripped by the rewriter.
+    expect(count(/<title>/gi)).toBe(1);
+    expect(count(/property="og:title"/g)).toBe(1);
+    expect(count(/property="og:description"/g)).toBe(1);
+    expect(count(/property="og:type"/g)).toBe(1);
+    expect(count(/property="og:site_name"/g)).toBe(1);
+    expect(count(/property="og:image"/g)).toBe(1);
+    expect(count(/name="twitter:card"/g)).toBe(1);
+    expect(count(/name="twitter:title"/g)).toBe(1);
+    expect(count(/name="twitter:description"/g)).toBe(1);
+    expect(count(/name="twitter:image"/g)).toBe(1);
+    expect(count(/name="description"/g)).toBe(1);
+
+    // The values should be the gallery-specific ones, not the static defaults.
+    expect(html).toContain("Smith Wedding");
+    expect(html).not.toContain("/og-default.png");
+    expect(html).not.toContain('content="Imago"');
+    expect(html).not.toContain("A self-hosted photography gallery.");
   });
 });
