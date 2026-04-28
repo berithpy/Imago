@@ -3,20 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Imago</title>
+    <title>%SITE_NAME%</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <!-- Default link-preview metadata. Per-gallery URLs are overridden at
-         the edge by the worker (see src/worker/routes/ogPreview.ts). -->
-    <meta name="description" content="Imago — a self-hosted photography gallery." />
-    <meta property="og:title" content="Imago" />
-    <meta property="og:description" content="A self-hosted photography gallery." />
+         the edge by the worker (see src/worker/routes/ogPreview.ts).
+         Values come from SITE_META in vite.config.ts. -->
+    <meta name="description" content="%SITE_DESCRIPTION_LONG%" />
+    <meta property="og:title" content="%SITE_NAME%" />
+    <meta property="og:description" content="%SITE_DESCRIPTION%" />
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="Imago" />
-    <meta property="og:image" content="/og-default.png" />
+    <meta property="og:site_name" content="%SITE_NAME%" />
+    <meta property="og:image" content="%SITE_OG_IMAGE%" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Imago" />
-    <meta name="twitter:description" content="A self-hosted photography gallery." />
-    <meta name="twitter:image" content="/og-default.png" />
+    <meta name="twitter:title" content="%SITE_NAME%" />
+    <meta name="twitter:description" content="%SITE_DESCRIPTION%" />
+    <meta name="twitter:image" content="%SITE_OG_IMAGE%" />
   </head>
   <body>
     <div id="root"></div>

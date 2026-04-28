@@ -9,15 +9,15 @@ let harness: WorkerTestHarness;
 const FAKE_INDEX_HTML = `<!doctype html>
 <html><head>
 <title>Imago</title>
-<meta name="description" content="Imago — a self-hosted photography gallery." />
+<meta name="description" content="Imago — hosted photo galleries that let the pictures talk" />
 <meta property="og:title" content="Imago" />
-<meta property="og:description" content="A self-hosted photography gallery." />
+<meta property="og:description" content="Hosted photo galleries." />
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="Imago" />
 <meta property="og:image" content="/og-default.png" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="Imago" />
-<meta name="twitter:description" content="A self-hosted photography gallery." />
+<meta name="twitter:description" content="Hosted photo galleries." />
 <meta name="twitter:image" content="/og-default.png" />
 </head>
 <body><div id="root"></div></body></html>`;
@@ -307,6 +307,6 @@ describe("og preview HTML rewriter", () => {
     expect(html).toContain("Smith Wedding");
     expect(html).not.toContain("/og-default.png");
     expect(html).not.toContain('content="Imago"');
-    expect(html).not.toContain("A self-hosted photography gallery.");
+    expect(html).not.toContain("Hosted photo galleries.");
   });
 });
