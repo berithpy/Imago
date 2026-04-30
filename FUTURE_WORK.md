@@ -245,12 +245,6 @@ Once the client module is stable, swapping the underlying `fetch` for Hono's `hc
 The work is incremental and does not require a big-bang migration. Introduce the client module and one domain wrapper, migrate one page (the admin dashboards are the highest-value target since they already exhibited a redirect-loop bug), then expand from there. React Query and `hc` can each be adopted later without rewriting consumers.
 
 
-## Admin Gallery page small improvmenet
-We should add the whole url on the "link button" and a share button on the viewer and admin gallery pages
-
-
-## Tailwind migration
-Use tailwind instead of our current css system, this is easier for the agent
 
 ---
 
@@ -273,47 +267,3 @@ The fix is a three-layer split:
 Dependency direction is `routes → services → lib`, enforced by folder structure and code review rather than by abstract interfaces. Services call Drizzle, R2, and Images directly; the layering is about responsibility, not about hiding the database.
 
 This work pairs naturally with the Drizzle migration above. As each route file is ported, its business operations should be extracted into the matching `services/<domain>.ts` module in the same pass, since doing them separately would touch the same code twice.
-
-
----
-
----
-
-## Public Landing Page
-
-Imago currently drops unauthenticated visitors straight into a login or gallery view, which assumes the visitor already knows what the product is. The app needs a simple public landing page at `/` (for visitors with no session and no gallery context) that introduces Imago as a hosted gallery service for photographers.
-
-### Positioning
-
-Imago is a **hosted photo gallery service for photographers** — a place to upload client work, share it behind a password or email link, and let clients download or review their photos without any of the friction of bigger platforms. Photographers pay a monthly subscription; we run the infrastructure.
-
-The story behind the product matters and should be on the page:
-
-- Imago was built because existing gallery platforms are either too expensive for the value they deliver, or so feature-heavy and complicated that a simple client delivery becomes a chore for both the photographer and the client.
-- It was developed as an independent project to offer a third option: a focused, affordable, easy-to-use gallery service that does the few things photographers actually need, and does them well.
-- Mention where it was developed (to be filled in with the real location / origin story when the page is written), so visitors understand it is a real product made by real people, not a faceless SaaS.
-
-### What the page should communicate
-
-- **What Imago is** — a hosted gallery service where photographers upload, organize, and share client galleries with a clean, fast viewer experience.
-- **Who it is for** — working photographers who want a simple, affordable way to deliver galleries to clients without learning a complex platform.
-- **Why it exists** — current options are either overpriced or overcomplicated; Imago is intentionally simple and priced to make sense for individual photographers and small studios.
-- **How to get started** — a single clear call to action (sign up / request access / log in, depending on what the onboarding flow supports at the time).
-
-### Page structure (kept deliberately simple)
-
-- **Hero** — product name, one-line pitch ("A simple hosted gallery service for photographers"), and a primary call to action.
-- **Why Imago** — short section on the origin story: built because existing tools were too expensive or too complicated, includes where the project was developed.
-- **What you get** — a short list of the core capabilities the service actually offers today (private galleries, password or email-link sharing, client downloads, etc.). No feature-dump.
-- **Pricing** — a single, clear monthly price (or a short plan list if multiple tiers exist), with no fine print games.
-- **Footer** — links to log in, contact, and any legal pages.
-
-The page should feel like a small, confident product page — not a long marketing site. One screen of scrolling is the target, not five.
-
-### Implementation notes
-
-- Lives in the React SPA as a new route (e.g. `src/client/pages/Landing.tsx`) and becomes the default unauthenticated route at `/`.
-- Renders fast with no API calls on the initial paint.
-- Must coexist with tenant-scoped routing: visiting a gallery URL still goes to the gallery, not the landing page.
-- Copy should describe only what the product actually does today; aspirational features stay off the landing page until they ship.
-- Worth revisiting after the Tailwind migration, since the landing page is the most style-heavy surface in the app.

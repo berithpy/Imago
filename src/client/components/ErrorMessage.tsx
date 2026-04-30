@@ -1,51 +1,27 @@
-interface ErrorMessageProps {
+type Props = {
   message: string;
-  /** Optional retry callback — renders a "Try again" button */
   onRetry?: () => void;
-}
+};
 
-export function ErrorMessage({ message, onRetry }: ErrorMessageProps) {
+export function ErrorMessage({ message, onRetry }: Props) {
   return (
     <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: 12,
-        padding: "48px 24px",
-        color: "var(--color-error)",
-        fontSize: "0.9rem",
-        textAlign: "center",
-      }}
+      role="alert"
+      className="px-4 py-3 my-3 bg-red-400/10 border border-red-400/40 rounded-lg text-red-400 text-sm flex items-center justify-between gap-3"
     >
-      <span style={{ fontSize: "1.5rem" }}>⚠</span>
-      {message}
+      <span>{message}</span>
       {onRetry && (
         <button
           onClick={onRetry}
-          style={{
-            marginTop: 4,
-            padding: "7px 18px",
-            background: "none",
-            border: "1px solid var(--color-border)",
-            borderRadius: "var(--radius)",
-            color: "var(--color-text-muted)",
-            fontSize: "0.875rem",
-            cursor: "pointer",
-          }}
+          className="px-2.5 py-1 bg-transparent border border-red-400/50 rounded-md text-red-400 text-xs cursor-pointer"
         >
-          Try again
+          Retry
         </button>
       )}
     </div>
   );
 }
 
-/** Inline single-line error for forms */
 export function FieldError({ message }: { message: string }) {
-  return (
-    <p style={{ color: "var(--color-error)", fontSize: "0.875rem", margin: 0 }}>
-      {message}
-    </p>
-  );
+  return <p className="text-sm text-red-400 mt-0.5">{message}</p>;
 }

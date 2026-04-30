@@ -1,26 +1,14 @@
-import { ReactNode } from "react";
+import type { ReactNode } from "react";
 
-interface EmptyStateProps {
-  message?: string;
-  /** Optional action element (e.g. a button or label) */
+type Props = {
+  message: string;
   action?: ReactNode;
-}
+};
 
-export function EmptyState({ message = "Nothing here yet.", action }: EmptyStateProps) {
+export function EmptyState({ message, action }: Props) {
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: 16,
-        padding: "80px 24px",
-        color: "var(--color-text-muted)",
-        fontSize: "1rem",
-        textAlign: "center",
-      }}
-    >
-      {message}
+    <div className="flex flex-col items-center justify-center py-16 gap-4 text-center text-neutral-500">
+      <p className="text-sm">{message}</p>
       {action}
     </div>
   );

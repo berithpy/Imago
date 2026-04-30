@@ -70,7 +70,7 @@ export function GalleryManagementPage() {
   if (!id) return null;
 
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "40px 24px" }}>
+    <div className="max-w-[1100px] mx-auto px-6 py-10">
       <GalleryManagementHeader
         galleryId={id}
         gallery={gallery}
@@ -100,7 +100,7 @@ export function GalleryManagementPage() {
       )}
 
       {loading ? (
-        <SpinnerOverlay label="Loading photos…" />
+        <SpinnerOverlay label="Loading photos..." />
       ) : photos.length === 0 ? (
         <EmptyState
           message="No photos yet."

@@ -1,117 +1,93 @@
-import { useState } from "react";
-import { inputStyle } from "@/client/components/ui";
+import { useState, type ReactNode } from "react";
 
 type Props = {
   emails: string[];
-  onAdd: (email: string) => void;
-  onRemove: (email: string) => void;
-  /** Show a spinner/disabled state on the Add button while an async add is in flight */
+  onAdd: (email: string) => void | Promise<void>;
+  onRemove: (email: string) => void | Promise<void>;
   adding?: boolean;
-  /** Email currently being removed — shows inline loading indicator on that chip */
   removingEmail?: string | null;
   placeholder?: string;
   addButtonLabel?: string;
-  label?: React.ReactNode;
+  label?: ReactNode;
 };
+
+const inputClass =
+  "flex-1 min-w-0 px-3.5 py-2.5 bg-neutral-950 border border-neutral-800 rounded-lg text-neutral-100 text-sm outline-none";
 
 export function EmailListInput({
   emails,
   onAdd,
   onRemove,
-  adding = false,
-  removingEmail = null,
-  placeholder = "viewer@example.com",
+  adding,
+  removingEmail,
+  placeholder = "email@example.com",
   addButtonLabel = "Add",
   label,
 }: Props) {
-  const [input, setInput] = useState("");
+  const [draft, setDraft] = useState("");
 
-  function commit() {
-    const trimmed = input.trim().toLowerCase();
+  async function handleSubmit() {
+    const trimmed = draft.trim().toLowerCase();
     if (!trimmed) return;
-    onAdd(trimmed);
-    setInput("");
+    if (emails.includes(trimmed)) {
+      setDraft("");
+      return;
+    }
+    await onAdd(trimmed);
+    setDraft("");
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+    <div className="flex flex-col gap-2">
       {label && (
-        <label style={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>
-          {label}
-        </label>
+        <label className="text-xs text-neutral-500">{label}</label>
       )}
-      {emails.length > 0 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {emails.map((email) => (
-            <span
-              key={email}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 4,
-                padding: "3px 8px",
-                background: "var(--color-bg)",
-                border: "1px solid var(--color-border)",
-                borderRadius: "var(--radius)",
-                fontSize: "0.8rem",
-                opacity: removingEmail === email ? 0.5 : 1,
-              }}
-            >
-              {email}
-              <button
-                type="button"
-                onClick={() => onRemove(email)}
-                disabled={removingEmail === email}
-                style={{
-                  background: "none",
-                  border: "none",
-                  cursor: removingEmail === email ? "not-allowed" : "pointer",
-                  color: "var(--color-text-muted)",
-                  padding: 0,
-                  lineHeight: 1,
-                  fontSize: "0.8rem",
-                }}
-                title="Remove"
-              >
-                {removingEmail === email ? "…" : "✕"}
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
-      <div style={{ display: "flex", gap: 8 }}>
+      <div className="flex gap-2">
         <input
           type="email"
-          placeholder={placeholder}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
-              commit();
+              void handleSubmit();
             }
           }}
-          disabled={adding}
-          style={{ ...inputStyle, flex: 1 }}
+          placeholder={placeholder}
+          className={inputClass}
         />
         <button
           type="button"
-          onClick={commit}
-          disabled={adding || !input.trim()}
-          style={{
-            padding: "8px 14px",
-            background: "none",
-            border: "1px solid var(--color-border)",
-            borderRadius: "var(--radius)",
-            color: "var(--color-text)",
-            fontSize: "0.85rem",
-            cursor: adding || !input.trim() ? "not-allowed" : "pointer",
-            whiteSpace: "nowrap",
-          }}
+          onClick={() => void handleSubmit()}
+          disabled={adding}
+          className="px-4 py-2.5 bg-amber-400 border-0 rounded-lg text-neutral-950 font-semibold text-sm cursor-pointer disabled:opacity-60"
         >
-          {adding ? "Adding…" : addButtonLabel}
+          {adding ? "..." : addButtonLabel}
         </button>
       </div>
+
+      {emails.length > 0 && (
+        <ul className="flex flex-wrap gap-1.5 mt-1">
+          {emails.map((email) => (
+            <li
+              key={email}
+              className="flex items-center gap-1.5 px-2 py-1 bg-neutral-950 border border-neutral-800 rounded-md text-xs text-neutral-100"
+            >
+              <span>{email}</span>
+              <button
+                type="button"
+                onClick={() => void onRemove(email)}
+                disabled={removingEmail === email}
+                className="bg-transparent border-0 text-red-400 cursor-pointer text-xs disabled:opacity-50"
+                title={`Remove ${email}`}
+                aria-label={`Remove ${email}`}
+              >
+                {removingEmail === email ? "..." : "X"}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

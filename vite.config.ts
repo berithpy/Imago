@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 
 // Single source of truth for the static link-preview metadata in index.html.
@@ -28,7 +29,7 @@ function siteMetaHtmlPlugin() {
 }
 
 export default defineConfig({
-  plugins: [react(), siteMetaHtmlPlugin()],
+  plugins: [react(), tailwindcss(), siteMetaHtmlPlugin()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

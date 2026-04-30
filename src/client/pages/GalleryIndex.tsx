@@ -36,11 +36,9 @@ export function GalleryIndex() {
   useEffect(load, []);
 
   return (
-    <div style={{ maxWidth: 800, margin: "0 auto", padding: "48px 24px" }}>
-      <h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: 8 }}>Imago</h1>
-      <p style={{ color: "var(--color-text-muted)", marginBottom: 40 }}>
-        Select a gallery to view
-      </p>
+    <div className="max-w-[800px] mx-auto px-6 py-12">
+      <h1 className="text-[2rem] font-bold mb-2">Imago</h1>
+      <p className="text-neutral-500 mb-10">Select a gallery to view</p>
 
       {loading && <SpinnerOverlay />}
       {error && <ErrorMessage message={error} onRetry={load} />}
@@ -50,37 +48,25 @@ export function GalleryIndex() {
       )}
 
       {!loading && !error && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div className="flex flex-col gap-3">
           {galleries.map((g) => (
             <Link
               key={g.id}
               to={g.is_public ? `${routeBase}/${g.slug}` : `${routeBase}/${g.slug}/login`}
-              style={{
-                display: "block",
-                padding: "20px 24px",
-                background: "var(--color-surface)",
-                border: "1px solid var(--color-border)",
-                borderRadius: "var(--radius)",
-                color: "var(--color-text)",
-                transition: "border-color 0.15s",
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.borderColor = "var(--color-accent)")}
-              onMouseLeave={(e) => (e.currentTarget.style.borderColor = "var(--color-border)")}
+              className="block px-6 py-5 bg-neutral-900 border border-neutral-800 rounded-lg text-neutral-100 transition-colors hover:border-amber-400"
             >
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontWeight: 600, fontSize: "1.1rem" }}>{g.name}</span>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-lg">{g.name}</span>
                 {g.is_public ? (
-                  <span style={{ fontSize: "0.7rem", padding: "2px 6px", borderRadius: 4, background: "var(--color-accent)", color: "#0f0f0f", fontWeight: 600 }}>PUBLIC</span>
+                  <span className="text-[0.7rem] px-1.5 py-0.5 rounded bg-amber-400 text-neutral-950 font-semibold">PUBLIC</span>
                 ) : null}
               </div>
               {g.description && (
-                <div style={{ color: "var(--color-text-muted)", marginTop: 4, fontSize: "0.9rem" }}>
-                  {g.description}
-                </div>
+                <div className="text-neutral-500 mt-1 text-sm">{g.description}</div>
               )}
               {g.event_date && (
-                <div style={{ color: "var(--color-text-muted)", marginTop: 4, fontSize: "0.85rem" }}>
-                  📅 {new Date(g.event_date * 1000).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}
+                <div className="text-neutral-500 mt-1 text-[0.85rem]">
+                  {new Date(g.event_date * 1000).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}
                 </div>
               )}
             </Link>
@@ -88,8 +74,8 @@ export function GalleryIndex() {
         </div>
       )}
 
-      <div style={{ marginTop: 48, borderTop: "1px solid var(--color-border)", paddingTop: 24 }}>
-        <Link to="/admin/login" style={{ fontSize: "0.85rem", color: "var(--color-text-muted)" }}>
+      <div className="mt-12 border-t border-neutral-800 pt-6">
+        <Link to="/admin/login" className="text-sm text-neutral-500">
           Admin
         </Link>
       </div>

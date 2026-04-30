@@ -1,150 +1,78 @@
-import { CSSProperties, useState } from "react";
+import type { CSSProperties } from "react";
 
-interface PhotoThumbnailProps {
+type Props = {
   r2Key: string;
   alt: string;
-  /** "cover" for fixed-ratio admin grid, "full-width" for masonry viewer */
   fit?: "cover" | "full-width";
-  /** Aspect ratio when fit="cover", e.g. "4/3". Defaults to "4/3". */
-  aspectRatio?: string;
-  onClick?: () => void;
   style?: CSSProperties;
-  /** 1-based index of this photo in the set */
+  onClick?: () => void;
   index?: number;
-  /** Total photos in the set */
   total?: number;
-  /** Original filename to display */
   filename?: string;
-}
+};
+
+const badgeClass =
+  "absolute text-[0.7rem] font-medium px-1.5 py-0.5 rounded bg-black/55 text-white pointer-events-none";
 
 export function PhotoThumbnail({
   r2Key,
   alt,
-  fit = "full-width",
-  aspectRatio = "4/3",
-  onClick,
+  fit = "cover",
   style,
+  onClick,
   index,
   total,
   filename,
-}: PhotoThumbnailProps) {
-  const [loaded, setLoaded] = useState(false);
-  const [errored, setErrored] = useState(false);
+}: Props) {
+  const url = `/api/images/${r2Key}?variant=thumb`;
+  const wrapperBase =
+    fit === "cover"
+      ? "relative overflow-hidden rounded-md aspect-square bg-neutral-800"
+      : "relative overflow-hidden rounded-md bg-neutral-800";
+  const imgClass =
+    fit === "cover"
+      ? "w-full h-full object-cover block"
+      : "w-full h-auto block";
 
-  if (fit === "cover") {
-    return (
-      <div
-        style={{
-          position: "relative",
-          aspectRatio,
-          overflow: "hidden",
-          borderRadius: "calc(var(--radius) - 2px)",
-          background: "var(--color-bg)",
-          cursor: onClick ? "pointer" : undefined,
-          ...style,
-        }}
-        onClick={onClick}
-      >
-        {/* Skeleton shimmer until image loads */}
-        {!loaded && !errored && <div style={skeletonStyle} />}
-        {errored && <div style={errorPlaceholderStyle}>⚠</div>}
-        <img
-          src={`/api/images/${r2Key}?variant=thumb`}
-          alt={alt}
-          loading="lazy"
-          onLoad={() => setLoaded(true)}
-          onError={() => setErrored(true)}
-          style={{
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            display: "block",
-            opacity: loaded ? 1 : 0,
-            transition: "opacity 0.2s ease",
-          }}
-        />
-      </div>
-    );
-  }
-
-  // full-width masonry tile
   return (
     <div
-      style={{
-        position: "relative",
-        overflow: "hidden",
-        borderRadius: "var(--radius)",
-        background: "var(--color-surface)",
-        cursor: onClick ? "pointer" : undefined,
-        ...style,
-      }}
+      className={`${wrapperBase} ${onClick ? "cursor-pointer" : ""}`}
       onClick={onClick}
+      style={style}
     >
-      {!loaded && !errored && (
-        <div style={{ ...skeletonStyle, aspectRatio: "3/2", position: "relative" }} />
-      )}
-      {errored && <div style={{ ...errorPlaceholderStyle, aspectRatio: "3/2" }}>⚠</div>}
       <img
-        src={`/api/images/${r2Key}?variant=thumb`}
+        src={url}
         alt={alt}
         loading="lazy"
-        onLoad={() => setLoaded(true)}
-        onError={() => setErrored(true)}
-        style={{
-          width: "100%",
-          display: "block",
-          opacity: loaded ? 1 : 0,
-          transition: "opacity 0.2s ease",
+        className={imgClass}
+        onLoad={(e) => {
+          const skeleton = e.currentTarget.nextSibling as HTMLElement | null;
+          if (skeleton && skeleton.classList.contains("photo-skeleton")) {
+            skeleton.style.display = "none";
+          }
         }}
       />
-      {loaded && filename && (
-        <span style={{ ...badgeStyle, bottom: 8, left: 8, maxWidth: "calc(100% - 16px)", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {filename}
+      <div
+        className="photo-skeleton absolute inset-0 bg-gradient-to-r from-neutral-800 via-neutral-700 to-neutral-800 bg-[length:200%_100%]"
+        style={{ animation: "shimmer 1.5s ease-in-out infinite" }}
+      />
+      {index !== undefined && total !== undefined && (
+        <span className={`${badgeClass} top-1.5 left-1.5`}>
+          {index} / {total}
         </span>
       )}
-      {loaded && index != null && total != null && (
-        <span style={{ ...badgeStyle, top: 8, right: 8 }}>
-          {index}&nbsp;/&nbsp;{total}
+      {filename && (
+        <span className={`${badgeClass} bottom-1.5 left-1.5 right-1.5 truncate text-left`}>
+          {filename}
         </span>
       )}
     </div>
   );
 }
 
-const badgeStyle: CSSProperties = {
-  position: "absolute",
-  background: "rgba(0,0,0,0.55)",
-  color: "#fff",
-  fontFamily: "'Courier New', Courier, monospace",
-  fontSize: 11,
-  lineHeight: 1.4,
-  padding: "2px 6px",
-  borderRadius: 3,
-  pointerEvents: "none",
-  userSelect: "none",
-  whiteSpace: "nowrap",
-  zIndex: 2,
-};
-
-const errorPlaceholderStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  background: "var(--color-surface)",
-  color: "var(--color-text-muted)",
-  fontSize: "1.25rem",
-  width: "100%",
-};
-
-const skeletonStyle: CSSProperties = {
-  position: "absolute",
-  inset: 0,
-  background: "linear-gradient(90deg, var(--color-surface) 25%, var(--color-border) 50%, var(--color-surface) 75%)",
-  backgroundSize: "200% 100%",
-  animation: "shimmer 1.4s infinite",
-};
-
-// Inject keyframes once
-const styleTag = document.createElement("style");
-styleTag.textContent = `@keyframes shimmer { from { background-position: 200% 0 } to { background-position: -200% 0 } }`;
-document.head.appendChild(styleTag);
+if (typeof document !== "undefined" && !document.getElementById("photo-thumbnail-shimmer")) {
+  const style = document.createElement("style");
+  style.id = "photo-thumbnail-shimmer";
+  style.textContent = `@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }`;
+  document.head.appendChild(style);
+}

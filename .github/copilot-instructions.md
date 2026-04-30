@@ -18,8 +18,9 @@ Imago is a self-hosted photography gallery app: a Vite React SPA served as stati
 ```bash
 npm test                        # run all vitest tests
 npm run test:routes             # worker route tests only
-npm run dev                     # Vite dev server (client only)
-npm run worker:dev              # wrangler dev (worker only)
+npm run dev                     # Vite dev server + wrangler dev (concurrently)
+npm run dev:spa                 # Vite dev server only
+npm run dev:worker              # wrangler dev only
 npm run db:migrate:local        # apply D1 migrations locally
 npm run db:migrate:remote       # apply D1 migrations to production
 npm run db:generate             # generate new Drizzle migration after schema changes

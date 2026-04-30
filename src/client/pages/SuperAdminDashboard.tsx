@@ -2,9 +2,16 @@ import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { createAuthClient } from "better-auth/client";
 import { SpinnerOverlay } from "@/client/components/Spinner";
-import { cardStyle, inputStyle, accentButtonStyle, ghostButtonStyle } from "@/client/components/ui";
 
 const authClient = createAuthClient({ baseURL: `${window.location.origin}/api/auth` });
+
+const cardClass = "bg-neutral-900 border border-neutral-800 rounded-lg px-6 py-5";
+const inputClass =
+  "w-full px-4 py-3 bg-neutral-950 border border-neutral-800 rounded-lg text-neutral-100 text-sm outline-none";
+const accentBtnClass =
+  "inline-block px-5 py-2.5 bg-amber-400 border-0 rounded-lg text-neutral-950 font-semibold text-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed";
+const ghostBtnClass =
+  "px-4 py-2 bg-transparent border border-neutral-800 rounded-lg text-neutral-500 text-sm cursor-pointer";
 
 type Tenant = {
   id: string;
@@ -29,10 +36,10 @@ type User = {
 type SlugStatus = "idle" | "checking" | "available" | "taken" | "invalid";
 
 function SlugIndicator({ status }: { status: SlugStatus }) {
-  if (status === "checking") return <span style={{ fontSize: "0.78rem", color: "var(--color-text-muted)" }}>Checking…</span>;
-  if (status === "available") return <span style={{ fontSize: "0.78rem", color: "var(--color-accent)" }}>✓ Available</span>;
-  if (status === "taken") return <span style={{ fontSize: "0.78rem", color: "#e05c5c" }}>✗ Already in use</span>;
-  if (status === "invalid") return <span style={{ fontSize: "0.78rem", color: "#e05c5c" }}>✗ Only lowercase letters, numbers, dashes</span>;
+  if (status === "checking") return <span className="text-[0.78rem] text-neutral-500">Checking...</span>;
+  if (status === "available") return <span className="text-[0.78rem] text-amber-400">+ Available</span>;
+  if (status === "taken") return <span className="text-[0.78rem] text-red-400">X Already in use</span>;
+  if (status === "invalid") return <span className="text-[0.78rem] text-red-400">X Only lowercase letters, numbers, dashes</span>;
   return null;
 }
 
@@ -53,7 +60,6 @@ export function SuperAdminDashboard() {
   const [usersLoading, setUsersLoading] = useState(false);
   const [tenantFilter, setTenantFilter] = useState<string>("");
 
-  // Create form
   const [createName, setCreateName] = useState("");
   const [createSlug, setCreateSlug] = useState("");
   const [createSlugStatus, setCreateSlugStatus] = useState<SlugStatus>("idle");
@@ -61,7 +67,6 @@ export function SuperAdminDashboard() {
   const [createError, setCreateError] = useState<string | null>(null);
   const createSlugTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Edit state: tenantId → { name, slug }
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editSlug, setEditSlug] = useState("");
@@ -69,19 +74,12 @@ export function SuperAdminDashboard() {
   const editSlugTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // Delete confirm
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteConfirmInput, setDeleteConfirmInput] = useState("");
 
-  // Auth check
   useEffect(() => {
     authClient.getSession({ fetchOptions: { credentials: "include" } }).then(({ data }) => {
       if (!data?.session) { navigate("/admin/login", { replace: true }); return; }
-      // Verify super-admin by attempting to load tenants. If the signed-in
-      // user is authenticated but lacks super-admin (e.g. a pre-multitenant
-      // single-admin install where the migration left is_super_admin = 0),
-      // sign them out and surface an explicit error instead of bouncing
-      // back to /admin (which would loop: dashboard 403 → login → dashboard).
       fetch("/api/admin/tenants", { credentials: "include" })
         .then(async (r) => {
           if (r.status === 403) {
@@ -122,7 +120,6 @@ export function SuperAdminDashboard() {
     if (sessionChecked) loadUsers(tenantFilter);
   }, [sessionChecked, tenantFilter]);
 
-  // --- Create ---
   function handleCreateNameChange(v: string) {
     setCreateName(v);
     const derived = v.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -168,7 +165,6 @@ export function SuperAdminDashboard() {
     }
   }
 
-  // --- Edit ---
   function startEdit(t: Tenant) {
     setEditingId(t.id);
     setEditName(t.name);
@@ -197,7 +193,6 @@ export function SuperAdminDashboard() {
     }
   }
 
-  // --- Delete ---
   async function handleDelete(t: Tenant) {
     await fetch(`/api/admin/tenants/${t.id}`, { method: "DELETE", credentials: "include" });
     setDeletingId(null); setDeleteConfirmInput("");
@@ -214,138 +209,133 @@ export function SuperAdminDashboard() {
   const activeTenants = tenants.filter((t) => !t.deleted_at);
   const deletedTenants = tenants.filter((t) => t.deleted_at);
 
+  function slugBorder(status: SlugStatus): string {
+    if (status === "available") return "border-amber-400";
+    if (status === "taken" || status === "invalid") return "border-red-400";
+    return "border-neutral-800";
+  }
+
   return (
-    <div style={{ maxWidth: 960, margin: "0 auto", padding: "40px 24px" }}>
+    <div className="max-w-[960px] mx-auto px-6 py-10">
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 40 }}>
+      <div className="flex justify-between items-center mb-10">
         <div>
-          <h1 style={{ fontSize: "1.75rem", fontWeight: 700 }}>Super Admin</h1>
-          <p style={{ color: "var(--color-text-muted)", fontSize: "0.9rem", marginTop: 2 }}>Manage tenants and users</p>
+          <h1 className="text-[1.75rem] font-bold">Super Admin</h1>
+          <p className="text-neutral-500 text-sm mt-0.5">Manage tenants and users</p>
         </div>
         <button
           onClick={async () => { await authClient.signOut({ fetchOptions: { credentials: "include" } }); navigate("/admin/login"); }}
-          style={ghostButtonStyle}
+          className={ghostBtnClass}
         >
           Sign out
         </button>
       </div>
 
-      {/* ================================================================
-          TENANTS SECTION
-      ================================================================ */}
-      <section style={{ marginBottom: 56 }}>
-        <h2 style={{ fontSize: "1.15rem", fontWeight: 600, marginBottom: 20 }}>Tenants</h2>
+      {/* TENANTS */}
+      <section className="mb-14">
+        <h2 className="text-[1.15rem] font-semibold mb-5">Tenants</h2>
 
         {/* Create form */}
-        <form onSubmit={handleCreate} style={{ ...cardStyle, display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
-          <h3 style={{ fontWeight: 600, fontSize: "0.95rem" }}>New Tenant</h3>
+        <form onSubmit={handleCreate} className={`${cardClass} flex flex-col gap-3.5 mb-5`}>
+          <h3 className="font-semibold text-[0.95rem] mb-1">New Tenant</h3>
           <input
             placeholder="Name"
             value={createName}
             onChange={(e) => handleCreateNameChange(e.target.value)}
             required
-            style={inputStyle}
+            className={inputClass}
           />
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div className="flex flex-col gap-1">
             <input
               placeholder="Slug"
               value={createSlug}
               onChange={(e) => handleCreateSlugChange(e.target.value)}
               required
               pattern="[a-z0-9-]+"
-              style={{
-                ...inputStyle,
-                borderColor: createSlugStatus === "available" ? "var(--color-accent)"
-                  : createSlugStatus === "taken" || createSlugStatus === "invalid" ? "#e05c5c"
-                    : undefined,
-              }}
+              className={`w-full px-4 py-3 bg-neutral-950 border ${slugBorder(createSlugStatus)} rounded-lg text-neutral-100 text-sm outline-none`}
             />
             <SlugIndicator status={createSlugStatus} />
           </div>
-          {createError && <p style={{ fontSize: "0.85rem", color: "#e05c5c" }}>{createError}</p>}
+          {createError && <p className="text-sm text-red-400">{createError}</p>}
           <div>
             <button
               type="submit"
               disabled={creating || createSlugStatus === "taken" || createSlugStatus === "invalid"}
-              style={accentButtonStyle}
+              className={accentBtnClass}
             >
-              {creating ? "Creating…" : "Create Tenant"}
+              {creating ? "Creating..." : "Create Tenant"}
             </button>
           </div>
         </form>
 
         {/* Active tenants */}
         {tenantsLoading ? (
-          <p style={{ color: "var(--color-text-muted)", fontSize: "0.9rem" }}>Loading…</p>
+          <p className="text-neutral-500 text-sm">Loading...</p>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div className="flex flex-col gap-2">
             {activeTenants.map((t) => (
-              <div key={t.id} style={{ ...cardStyle, display: "flex", flexDirection: "column", gap: 8 }}>
+              <div key={t.id} className={`${cardClass} flex flex-col gap-2`}>
                 {editingId === t.id ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    <input value={editName} onChange={(e) => setEditName(e.target.value)} style={inputStyle} placeholder="Name" />
-                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <div className="flex flex-col gap-2">
+                    <input value={editName} onChange={(e) => setEditName(e.target.value)} className={inputClass} placeholder="Name" />
+                    <div className="flex flex-col gap-1">
                       <input
                         value={editSlug}
                         onChange={(e) => handleEditSlugChange(e.target.value)}
-                        style={{
-                          ...inputStyle,
-                          borderColor: editSlugStatus === "available" ? "var(--color-accent)"
-                            : editSlugStatus === "taken" || editSlugStatus === "invalid" ? "#e05c5c"
-                              : undefined,
-                        }}
+                        className={`w-full px-4 py-3 bg-neutral-950 border ${slugBorder(editSlugStatus)} rounded-lg text-neutral-100 text-sm outline-none`}
                         placeholder="Slug"
                       />
                       <SlugIndicator status={editSlugStatus} />
                     </div>
-                    <div style={{ display: "flex", gap: 8 }}>
+                    <div className="flex gap-2">
                       <button
                         onClick={() => handleSave(t)}
                         disabled={saving || editSlugStatus === "taken" || editSlugStatus === "invalid"}
-                        style={accentButtonStyle}
+                        className={accentBtnClass}
                       >
-                        {saving ? "Saving…" : "Save"}
+                        {saving ? "Saving..." : "Save"}
                       </button>
-                      <button onClick={() => setEditingId(null)} style={ghostButtonStyle}>Cancel</button>
+                      <button onClick={() => setEditingId(null)} className={ghostBtnClass}>Cancel</button>
                     </div>
                   </div>
                 ) : deletingId === t.id ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    <p style={{ fontSize: "0.9rem" }}>
+                  <div className="flex flex-col gap-2">
+                    <p className="text-sm">
                       Type <strong>{t.slug}</strong> to confirm deletion:
                     </p>
                     <input
                       value={deleteConfirmInput}
                       onChange={(e) => setDeleteConfirmInput(e.target.value)}
                       placeholder={t.slug}
-                      style={inputStyle}
+                      className={inputClass}
                       autoFocus
                     />
-                    <div style={{ display: "flex", gap: 8 }}>
+                    <div className="flex gap-2">
                       <button
                         onClick={() => handleDelete(t)}
                         disabled={deleteConfirmInput !== t.slug}
-                        style={{ ...accentButtonStyle, background: deleteConfirmInput === t.slug ? "#e05c5c" : undefined, opacity: deleteConfirmInput === t.slug ? 1 : 0.4 }}
+                        className={`inline-block px-4 py-2 border-0 rounded-lg font-semibold text-sm cursor-pointer ${deleteConfirmInput === t.slug ? "bg-red-400 text-neutral-950" : "bg-amber-400 text-neutral-950 opacity-40"
+                          }`}
                       >
                         Delete
                       </button>
-                      <button onClick={() => { setDeletingId(null); setDeleteConfirmInput(""); }} style={ghostButtonStyle}>Cancel</button>
+                      <button onClick={() => { setDeletingId(null); setDeleteConfirmInput(""); }} className={ghostBtnClass}>Cancel</button>
                     </div>
                   </div>
                 ) : (
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div className="flex justify-between items-center">
                     <div>
-                      <span style={{ fontWeight: 600 }}>{t.name}</span>
-                      <span style={{ color: "var(--color-text-muted)", fontSize: "0.85rem", marginLeft: 8 }}>/{t.slug}</span>
+                      <span className="font-semibold">{t.name}</span>
+                      <span className="text-neutral-500 text-sm ml-2">/{t.slug}</span>
                     </div>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <button onClick={() => navigate(`/${t.slug}/admin`)} style={ghostButtonStyle} title="Act as tenant">
-                        Open →
+                    <div className="flex gap-1.5">
+                      <button onClick={() => navigate(`/${t.slug}/admin`)} className={ghostBtnClass} title="Act as tenant">
+                        Open
                       </button>
-                      <button onClick={() => startEdit(t)} style={ghostButtonStyle}>Edit</button>
+                      <button onClick={() => startEdit(t)} className={ghostBtnClass}>Edit</button>
                       <button
                         onClick={() => { setDeletingId(t.id); setDeleteConfirmInput(""); }}
-                        style={{ ...ghostButtonStyle, color: "#e05c5c" }}
+                        className="px-4 py-2 bg-transparent border border-neutral-800 rounded-lg text-red-400 text-sm cursor-pointer"
                       >
                         Delete
                       </button>
@@ -355,25 +345,25 @@ export function SuperAdminDashboard() {
               </div>
             ))}
             {activeTenants.length === 0 && (
-              <p style={{ color: "var(--color-text-muted)", fontSize: "0.9rem" }}>No tenants yet.</p>
+              <p className="text-neutral-500 text-sm">No tenants yet.</p>
             )}
           </div>
         )}
 
         {/* Soft-deleted tenants */}
         {deletedTenants.length > 0 && (
-          <details style={{ marginTop: 16 }}>
-            <summary style={{ fontSize: "0.85rem", color: "var(--color-text-muted)", cursor: "pointer" }}>
+          <details className="mt-4">
+            <summary className="text-sm text-neutral-500 cursor-pointer">
               {deletedTenants.length} deleted tenant{deletedTenants.length !== 1 ? "s" : ""}
             </summary>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+            <div className="flex flex-col gap-2 mt-2">
               {deletedTenants.map((t) => (
-                <div key={t.id} style={{ ...cardStyle, display: "flex", justifyContent: "space-between", alignItems: "center", opacity: 0.55 }}>
+                <div key={t.id} className={`${cardClass} flex justify-between items-center opacity-55`}>
                   <div>
-                    <span style={{ fontWeight: 600 }}>{t.name}</span>
-                    <span style={{ color: "var(--color-text-muted)", fontSize: "0.85rem", marginLeft: 8 }}>/{t.slug}</span>
+                    <span className="font-semibold">{t.name}</span>
+                    <span className="text-neutral-500 text-sm ml-2">/{t.slug}</span>
                   </div>
-                  <button onClick={() => handleRestore(t)} style={ghostButtonStyle}>Restore</button>
+                  <button onClick={() => handleRestore(t)} className={ghostBtnClass}>Restore</button>
                 </div>
               ))}
             </div>
@@ -381,24 +371,14 @@ export function SuperAdminDashboard() {
         )}
       </section>
 
-      {/* ================================================================
-          USERS SECTION
-      ================================================================ */}
+      {/* USERS */}
       <section>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <h2 style={{ fontSize: "1.15rem", fontWeight: 600 }}>Users</h2>
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-[1.15rem] font-semibold">Users</h2>
           <select
             value={tenantFilter}
             onChange={(e) => setTenantFilter(e.target.value)}
-            style={{
-              padding: "6px 10px",
-              borderRadius: 6,
-              border: "1px solid var(--color-border)",
-              background: "var(--color-surface)",
-              color: "var(--color-text)",
-              fontSize: "0.85rem",
-              cursor: "pointer",
-            }}
+            className="px-3 py-2 rounded-md border border-neutral-800 bg-neutral-900 text-neutral-100 text-sm cursor-pointer"
           >
             <option value="">All tenants</option>
             {activeTenants.map((t) => (
@@ -408,39 +388,41 @@ export function SuperAdminDashboard() {
         </div>
 
         {usersLoading ? (
-          <p style={{ color: "var(--color-text-muted)", fontSize: "0.9rem" }}>Loading…</p>
+          <p className="text-neutral-500 text-sm">Loading...</p>
         ) : users.length === 0 ? (
-          <p style={{ color: "var(--color-text-muted)", fontSize: "0.9rem" }}>No users found.</p>
+          <p className="text-neutral-500 text-sm">No users found.</p>
         ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-[0.875rem]">
               <thead>
-                <tr style={{ borderBottom: "1px solid var(--color-border)", textAlign: "left" }}>
-                  <th style={{ padding: "8px 12px", fontWeight: 600, color: "var(--color-text-muted)" }}>Name</th>
-                  <th style={{ padding: "8px 12px", fontWeight: 600, color: "var(--color-text-muted)" }}>Email</th>
-                  <th style={{ padding: "8px 12px", fontWeight: 600, color: "var(--color-text-muted)" }}>Tenant</th>
-                  <th style={{ padding: "8px 12px", fontWeight: 600, color: "var(--color-text-muted)" }}>Role</th>
+                <tr className="border-b border-neutral-800 text-left">
+                  <th className="px-3 py-3 font-semibold text-neutral-500">Name</th>
+                  <th className="px-3 py-3 font-semibold text-neutral-500">Email</th>
+                  <th className="px-3 py-3 font-semibold text-neutral-500">Tenant</th>
+                  <th className="px-3 py-3 font-semibold text-neutral-500">Role</th>
                 </tr>
               </thead>
               <tbody>
                 {users.map((u) => (
-                  <tr key={u.id} style={{ borderBottom: "1px solid var(--color-border)" }}>
-                    <td style={{ padding: "8px 12px" }}>
+                  <tr key={u.id} className="border-b border-neutral-800">
+                    <td className="px-3 py-3">
                       {u.name}
-                      {u.is_super_admin ? <span style={{ marginLeft: 6, fontSize: "0.7rem", padding: "2px 5px", borderRadius: 4, background: "var(--color-accent)", color: "#0f0f0f", fontWeight: 600 }}>SUPER</span> : null}
+                      {u.is_super_admin ? (
+                        <span className="ml-1.5 text-[0.7rem] px-1.5 py-0.5 rounded bg-amber-400 text-neutral-950 font-semibold">SUPER</span>
+                      ) : null}
                     </td>
-                    <td style={{ padding: "8px 12px", color: "var(--color-text-muted)" }}>{u.email}</td>
-                    <td style={{ padding: "8px 12px", color: "var(--color-text-muted)" }}>
+                    <td className="px-3 py-3 text-neutral-500">{u.email}</td>
+                    <td className="px-3 py-3 text-neutral-500">
                       {u.tenant_name ? (
                         <button
                           onClick={() => navigate(`/${tenants.find((t) => t.id === u.tenant_id)?.slug}/admin`)}
-                          style={{ background: "none", border: "none", color: "var(--color-accent)", cursor: "pointer", padding: 0, fontSize: "inherit" }}
+                          className="bg-transparent border-0 text-amber-400 cursor-pointer p-0 text-inherit"
                         >
                           {u.tenant_name}
                         </button>
-                      ) : "—"}
+                      ) : "-"}
                     </td>
-                    <td style={{ padding: "8px 12px", color: "var(--color-text-muted)" }}>{u.role ?? "—"}</td>
+                    <td className="px-3 py-3 text-neutral-500">{u.role ?? "-"}</td>
                   </tr>
                 ))}
               </tbody>

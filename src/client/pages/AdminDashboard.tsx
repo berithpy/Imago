@@ -4,7 +4,6 @@ import { createAuthClient } from "better-auth/client";
 import { SpinnerOverlay } from "@/client/components/Spinner";
 import { CreateGalleryForm } from "@/client/components/CreateGalleryForm";
 import { GalleryList } from "@/client/components/GalleryList";
-import { accentButtonStyle, ghostButtonStyle } from "@/client/components/ui";
 import { useTenant } from "@/client/lib/tenantContext";
 
 const authClient = createAuthClient({ baseURL: `${window.location.origin}/api/auth` });
@@ -41,21 +40,29 @@ export function AdminDashboard() {
   }
 
   return (
-    <div style={{ maxWidth: 900, margin: "0 auto", padding: "40px 24px" }}>
+    <div className="max-w-[900px] mx-auto px-6 py-10">
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 40 }}>
+      <div className="flex justify-between items-center mb-10">
         <div>
-          <a href={routeBase || "/"} style={{ fontSize: "0.85rem", color: "var(--color-text-muted)" }}>← Site</a>
-          <h1 style={{ fontSize: "1.75rem", fontWeight: 700, marginTop: 4 }}>Admin</h1>
+          <a href={routeBase || "/"} className="text-sm text-neutral-500">Site</a>
+          <h1 className="text-[1.75rem] font-bold mt-1">Admin</h1>
         </div>
-        <button onClick={handleSignOut} style={ghostButtonStyle}>Sign out</button>
+        <button
+          onClick={handleSignOut}
+          className="px-4 py-2 bg-transparent border border-neutral-800 rounded-lg text-neutral-500 text-sm cursor-pointer"
+        >
+          Sign out
+        </button>
       </div>
 
       {/* Galleries */}
       <section>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <h2 style={{ fontSize: "1.1rem", fontWeight: 600 }}>Galleries</h2>
-          <button onClick={() => setShowCreate(!showCreate)} style={accentButtonStyle}>
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-[1.1rem] font-semibold">Galleries</h2>
+          <button
+            onClick={() => setShowCreate(!showCreate)}
+            className="px-4 py-2 bg-amber-400 border-0 rounded-lg text-neutral-950 font-semibold text-sm cursor-pointer"
+          >
             {showCreate ? "Cancel" : "+ New Gallery"}
           </button>
         </div>
@@ -69,7 +76,7 @@ export function AdminDashboard() {
         )}
 
         {!sessionChecked ? (
-          <SpinnerOverlay label="Loading…" />
+          <SpinnerOverlay label="Loading..." />
         ) : (
           <GalleryList
             refreshKey={refreshKey}
@@ -79,9 +86,6 @@ export function AdminDashboard() {
           />
         )}
       </section>
-
     </div>
   );
 }
-
-

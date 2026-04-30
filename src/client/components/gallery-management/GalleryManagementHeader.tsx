@@ -1,9 +1,9 @@
 import { Link } from "react-router-dom";
 import { useState, type ReactNode } from "react";
-import { dangerButtonStyle, ghostButtonStyle } from "@/client/components/ui";
 import { exportGallery } from "@/client/lib/exportGallery";
 import { formatDate, type Gallery } from "@/client/lib/galleryManagement";
 import { useTenant } from "@/client/lib/tenantContext";
+import { copyToClipboard, shareUrl } from "@/client/lib/share";
 
 type Props = {
   galleryId: string;
@@ -16,6 +16,15 @@ type Props = {
   uploadControl?: ReactNode;
 };
 
+const ghostBtnClass =
+  "px-4 py-2 bg-transparent border border-neutral-800 rounded-lg text-neutral-500 text-sm cursor-pointer disabled:opacity-50";
+const dangerBtnClass =
+  "px-4 py-2 bg-transparent border border-neutral-800 rounded-lg text-red-400 text-sm cursor-pointer disabled:opacity-50";
+
+function buildAbsoluteUrl(routeBase: string, slug: string): string {
+  return `${window.location.origin}${routeBase}/${slug}`;
+}
+
 export function GalleryManagementHeader({
   galleryId,
   gallery,
@@ -26,11 +35,13 @@ export function GalleryManagementHeader({
   onPermanentDeleteSuccess,
   uploadControl,
 }: Props) {
+  const { apiBase, routeBase } = useTenant();
   const [deletingGallery, setDeletingGallery] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState<string | null>(null);
   const [exportDone, setExportDone] = useState(false);
-  const { apiBase, routeBase } = useTenant();
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  const [shareState, setShareState] = useState<"idle" | "shared" | "copied" | "failed">("idle");
 
   async function handleTogglePublic() {
     if (!gallery) return;
@@ -49,10 +60,7 @@ export function GalleryManagementHeader({
     if (!confirm(`Hide "${gallery.name}" from viewers? You can restore it later.`)) return;
     setDeletingGallery(true);
     try {
-      await fetch(`${apiBase}/admin/galleries/${galleryId}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
+      await fetch(`${apiBase}/admin/galleries/${galleryId}`, { method: "DELETE", credentials: "include" });
       onGalleryUpdated((current) => ({ ...current, deleted_at: Math.floor(Date.now() / 1000) }));
     } finally {
       setDeletingGallery(false);
@@ -63,10 +71,7 @@ export function GalleryManagementHeader({
     if (!gallery) return;
     setDeletingGallery(true);
     try {
-      await fetch(`${apiBase}/admin/galleries/${galleryId}/restore`, {
-        method: "POST",
-        credentials: "include",
-      });
+      await fetch(`${apiBase}/admin/galleries/${galleryId}/restore`, { method: "POST", credentials: "include" });
       onGalleryUpdated((current) => ({ ...current, deleted_at: null }));
     } finally {
       setDeletingGallery(false);
@@ -78,10 +83,7 @@ export function GalleryManagementHeader({
     if (!confirm(`Permanently delete "${gallery.name}" and ALL its photos? This cannot be undone.`)) return;
     setDeletingGallery(true);
     try {
-      await fetch(`${apiBase}/admin/galleries/${galleryId}/permanent`, {
-        method: "DELETE",
-        credentials: "include",
-      });
+      await fetch(`${apiBase}/admin/galleries/${galleryId}/permanent`, { method: "DELETE", credentials: "include" });
       onPermanentDeleteSuccess();
     } finally {
       setDeletingGallery(false);
@@ -90,18 +92,13 @@ export function GalleryManagementHeader({
 
   async function handleExport() {
     setExporting(true);
-    setExportProgress("Preparing export…");
+    setExportProgress("Preparing export...");
     try {
-      const res = await fetch(`${apiBase}/admin/galleries/${galleryId}/export`, {
-        credentials: "include",
-      });
+      const res = await fetch(`${apiBase}/admin/galleries/${galleryId}/export`, { credentials: "include" });
       if (!res.ok) throw new Error("Export failed");
-      const data = (await res.json()) as {
-        galleryName: string;
-        photos: { name: string; url: string }[];
-      };
+      const data = (await res.json()) as { galleryName: string; photos: { name: string; url: string }[] };
       await exportGallery(data.galleryName, data.photos, (done, total) => {
-        setExportProgress(`Downloading ${done} / ${total}…`);
+        setExportProgress(`Downloading ${done} / ${total}...`);
       });
       setExportDone(true);
       setTimeout(() => setExportDone(false), 2500);
@@ -114,161 +111,142 @@ export function GalleryManagementHeader({
     }
   }
 
+  async function handleCopyUrl() {
+    if (!gallery) return;
+    const url = buildAbsoluteUrl(routeBase, gallery.slug);
+    const ok = await copyToClipboard(url);
+    setCopyState(ok ? "copied" : "failed");
+    setTimeout(() => setCopyState("idle"), 2000);
+  }
+
+  async function handleShare() {
+    if (!gallery) return;
+    const url = buildAbsoluteUrl(routeBase, gallery.slug);
+    const result = await shareUrl(gallery.name, url);
+    setShareState(result);
+    setTimeout(() => setShareState("idle"), 2000);
+  }
+
+  const shareLabel =
+    shareState === "copied" ? "+ Link copied!" :
+      shareState === "shared" ? "+ Shared" :
+        shareState === "failed" ? "Share failed" :
+          "Share";
+
   return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "flex-start",
-        marginBottom: 32,
-        gap: 20,
-      }}
-    >
-      <div>
-        <Link
-          to={`${routeBase}/admin`}
-          style={{
-            fontSize: "0.85rem",
-            color: "var(--color-text-muted)",
-            textDecoration: "none",
-          }}
-        >
-          ← Back to galleries
+    <div className="flex flex-wrap justify-between items-start mb-8 gap-5">
+      <div className="min-w-0">
+        <Link to={`${routeBase}/admin`} className="text-sm text-neutral-500">
+          Back to galleries
         </Link>
-        <div style={{ marginTop: 8, fontSize: "0.72rem", letterSpacing: "0.08em", color: "var(--color-text-muted)", fontWeight: 600 }}>
+        <div className="mt-2 text-[0.72rem] tracking-[0.08em] text-neutral-500 font-semibold">
           GALLERY MANAGEMENT
         </div>
-        <h1 style={{ fontSize: "1.75rem", fontWeight: 700, marginTop: 4 }}>
+        <h1 className="text-[1.75rem] font-bold mt-1">
           {gallery?.name ?? "Gallery"}
         </h1>
+
         {gallery && (
-          <a
-            href={`${routeBase}/${gallery.slug}`}
-            target="_blank"
-            rel="noreferrer"
-            style={{ fontSize: "0.85rem", color: "var(--color-text-muted)" }}
-          >
-            {routeBase}/{gallery.slug} ↗
-          </a>
+          <div className="flex items-center gap-2 mt-1">
+            <a
+              href={`${routeBase}/${gallery.slug}`}
+              target="_blank"
+              rel="noreferrer"
+              className="text-sm text-neutral-500 hover:text-amber-400"
+            >
+              {routeBase}/{gallery.slug}
+            </a>
+            <button
+              onClick={handleCopyUrl}
+              title="Copy full URL"
+              aria-label="Copy full URL"
+              className="inline-flex items-center justify-center w-7 h-7 bg-transparent border border-neutral-800 rounded-md text-neutral-500 text-xs cursor-pointer hover:text-amber-400 hover:border-amber-400 transition-colors"
+            >
+              {copyState === "copied" ? "+" : copyState === "failed" ? "X" : "Copy"}
+            </button>
+            {copyState === "copied" && (
+              <span className="text-xs text-amber-400">Copied!</span>
+            )}
+          </div>
         )}
+
         {gallery?.deleted_at && (
-          <span
-            style={{
-              display: "inline-block",
-              marginTop: 4,
-              fontSize: "0.75rem",
-              padding: "2px 8px",
-              borderRadius: 4,
-              background: "var(--color-border)",
-              color: "var(--color-text-muted)",
-              fontWeight: 600,
-              letterSpacing: "0.04em",
-            }}
-          >
+          <span className="inline-block mt-1 text-xs px-2 py-0.5 rounded bg-neutral-800 text-neutral-500 font-semibold tracking-[0.04em]">
             HIDDEN
           </span>
         )}
         {gallery?.event_date && (
-          <div style={{ fontSize: "0.8rem", color: "var(--color-text-muted)", marginTop: 4 }}>
-            📅 {formatDate(gallery.event_date)}
+          <div className="text-[0.8rem] text-neutral-500 mt-1">
+            {formatDate(gallery.event_date)}
           </div>
         )}
         {gallery?.expires_at && (
           <div
-            style={{
-              fontSize: "0.8rem",
-              color:
-                gallery.expires_at * 1000 < Date.now()
-                  ? "var(--color-error)"
-                  : "var(--color-text-muted)",
-              marginTop: 2,
-            }}
+            className={`text-[0.8rem] mt-0.5 ${gallery.expires_at * 1000 < Date.now() ? "text-red-400" : "text-neutral-500"
+              }`}
           >
-            ⏳ Expires {formatDate(gallery.expires_at)}
+            Expires {formatDate(gallery.expires_at)}
           </div>
         )}
       </div>
 
-      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+      <div className="flex flex-wrap gap-2.5 items-center justify-end">
         {gallery && (
           <button
             onClick={handleTogglePublic}
             title={gallery.is_public ? "Make private" : "Make public"}
-            style={{
-              padding: "7px 14px",
-              background: gallery.is_public ? "var(--color-accent)" : "none",
-              border: "1px solid var(--color-border)",
-              borderRadius: "var(--radius)",
-              color: gallery.is_public ? "#0f0f0f" : "var(--color-text-muted)",
-              fontSize: "0.85rem",
-              fontWeight: gallery.is_public ? 600 : 400,
-              cursor: "pointer",
-            }}
+            className={`px-4 py-2 border border-neutral-800 rounded-lg text-sm cursor-pointer ${gallery.is_public
+              ? "bg-amber-400 text-neutral-950 font-semibold"
+              : "bg-transparent text-neutral-500"
+              }`}
           >
-            {gallery.is_public ? "🌐 Public" : "🔒 Private"}
+            {gallery.is_public ? "Public" : "Private"}
           </button>
         )}
-        {gallery &&
-          (gallery.deleted_at ? (
-            <>
-              <button
-                onClick={handleRestore}
-                disabled={deletingGallery}
-                style={{ ...ghostButtonStyle, fontSize: "0.85rem" }}
-              >
-                Restore
-              </button>
-              <button
-                onClick={handlePermanentDelete}
-                disabled={deletingGallery}
-                style={{ ...dangerButtonStyle, fontSize: "0.85rem" }}
-              >
-                Delete forever
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={handleSoftDelete}
-              disabled={deletingGallery}
-              style={{ ...dangerButtonStyle, fontSize: "0.85rem" }}
-            >
-              Hide gallery
+        {gallery && (gallery.deleted_at ? (
+          <>
+            <button onClick={handleRestore} disabled={deletingGallery} className={ghostBtnClass}>Restore</button>
+            <button onClick={handlePermanentDelete} disabled={deletingGallery} className={dangerBtnClass}>
+              Delete forever
             </button>
-          ))}
+          </>
+        ) : (
+          <button onClick={handleSoftDelete} disabled={deletingGallery} className={dangerBtnClass}>
+            Hide gallery
+          </button>
+        ))}
         <button
           onClick={onToggleSettings}
           aria-pressed={settingsOpen}
           title={settingsOpen ? "Close settings" : "Open settings"}
-          style={{
-            padding: "7px 14px",
-            background: settingsOpen ? "var(--color-border)" : "none",
-            border: "1px solid var(--color-border)",
-            borderRadius: "var(--radius)",
-            color: "var(--color-text-muted)",
-            fontSize: "0.85rem",
-            cursor: "pointer",
-          }}
+          className={`px-4 py-2 border border-neutral-800 rounded-lg text-neutral-500 text-sm cursor-pointer ${settingsOpen ? "bg-neutral-800" : "bg-transparent"
+            }`}
         >
-          {settingsOpen ? "✕ Close settings" : "⚙ Settings"}
+          {settingsOpen ? "Close settings" : "Settings"}
         </button>
+        {gallery && (
+          <button
+            onClick={handleShare}
+            title="Share gallery URL"
+            className={`px-4 py-2 border rounded-lg text-sm cursor-pointer whitespace-nowrap transition-colors ${shareState === "shared" || shareState === "copied"
+              ? "bg-amber-400 border-amber-400 text-neutral-950 font-semibold"
+              : "bg-transparent border-neutral-800 text-neutral-100"
+              }`}
+          >
+            {shareLabel}
+          </button>
+        )}
         {hasPhotos && (
           <button
             onClick={handleExport}
             disabled={exporting}
-            style={{
-              padding: "7px 14px",
-              background: exportDone ? "var(--color-accent)" : "none",
-              border: `1px solid ${exportDone ? "var(--color-accent)" : "var(--color-border)"}`,
-              borderRadius: "var(--radius)",
-              color: exportDone ? "#0f0f0f" : exporting ? "var(--color-text-muted)" : "var(--color-text)",
-              fontSize: "0.85rem",
-              fontWeight: exportDone ? 600 : 400,
-              cursor: exporting ? "not-allowed" : "pointer",
-              whiteSpace: "nowrap",
-              transition: "background 0.2s, color 0.2s, border-color 0.2s",
-            }}
+            className={`px-4 py-2 border rounded-lg text-sm whitespace-nowrap transition-colors ${exporting ? "cursor-not-allowed text-neutral-500" : "cursor-pointer text-neutral-100"
+              } ${exportDone
+                ? "bg-amber-400 border-amber-400 text-neutral-950 font-semibold"
+                : "bg-transparent border-neutral-800"
+              }`}
           >
-            {exportDone ? "✓ Saved!" : exporting ? exportProgress : "⬇ Export zip"}
+            {exportDone ? "Saved!" : exporting ? exportProgress : "Export zip"}
           </button>
         )}
         {uploadControl}

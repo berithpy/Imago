@@ -27,10 +27,7 @@ You may need to set up a cloudflare account and even set your credit card, but t
 ```bash
 npm install
 
-# Terminal 1 - Worker (localhost:8787)
-npm run worker:dev
-
-# Terminal 2 - Vite frontend (localhost:5173, proxies /api to :8787)
+# Starts both the worker (localhost:8787) and Vite frontend (localhost:5173, proxies /api to :8787)
 npm run dev
 ```
 

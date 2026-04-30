@@ -14,10 +14,6 @@ export function AdminLogin() {
   const { routeBase } = useTenant();
   const [checkingSession, setCheckingSession] = useState(true);
 
-  // If SuperAdminDashboard signed us out because we lacked super-admin,
-  // it appended ?error=not-authorized so we can explain the rejection
-  // instead of silently bouncing the user (which previously caused a
-  // /admin → /admin/login → /admin loop).
   const errorCode = searchParams.get("error");
   const errorMessage =
     errorCode === "not-authorized"
@@ -25,8 +21,6 @@ export function AdminLogin() {
       : null;
 
   useEffect(() => {
-    // If we landed here with an error, do not auto-redirect on an existing
-    // session — that would re-trigger the loop the error is trying to break.
     if (errorCode) {
       setCheckingSession(false);
       return;
@@ -60,17 +54,7 @@ export function AdminLogin() {
       {errorMessage && (
         <div
           role="alert"
-          style={{
-            maxWidth: 420,
-            margin: "24px auto 0",
-            padding: "12px 16px",
-            background: "rgba(224, 92, 92, 0.12)",
-            border: "1px solid rgba(224, 92, 92, 0.4)",
-            borderRadius: 8,
-            color: "#e05c5c",
-            fontSize: "0.9rem",
-            textAlign: "center",
-          }}
+          className="max-w-[420px] mx-auto mt-6 px-4 py-3 bg-red-400/10 border border-red-400/40 rounded-lg text-red-400 text-sm text-center"
         >
           {errorMessage}
         </div>

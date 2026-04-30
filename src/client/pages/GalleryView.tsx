@@ -8,6 +8,7 @@ import { PhotoThumbnail } from "@/client/components/PhotoThumbnail";
 import { Lightbox } from "@/client/components/Lightbox";
 import { exportGallery } from "@/client/lib/exportGallery";
 import { useTenant } from "@/client/lib/tenantContext";
+import { shareUrl } from "@/client/lib/share";
 
 type Photo = {
   id: string;
@@ -25,12 +26,7 @@ type FetchPhotosResult = {
   total: number;
 };
 
-// ---------------------------------------------------------------------------
-// Masonic grid — isolated component so masonic's internal hooks don't cause
-// the parent GalleryView to re-render on every scroll/resize event.
-// ---------------------------------------------------------------------------
 function PhotoCard({ data: photo, width, index }: { data: Photo; width: number; index: number }) {
-  // PhotoThumbnail renders an <img> that masonic will measure after load
   const ctx = (PhotoCard as any)._ctx as { onClick: (p: Photo) => void; total: number; showInfo: boolean };
   return (
     <PhotoThumbnail
@@ -59,9 +55,7 @@ function MasonryGrid({
   showInfo: boolean;
   scrollToIndex?: number;
 }) {
-  // Attach click handler via a static property to avoid recreating render fn
   (PhotoCard as any)._ctx = { onClick: onPhotoClick, total, showInfo };
-
   return (
     <Masonry
       items={photos}
@@ -80,6 +74,7 @@ export function GalleryView() {
   const navigate = useNavigate();
   const location = useLocation();
   const { apiBase, routeBase } = useTenant();
+
   const getPhotoIdFromPath = useCallback((pathname: string): string | undefined => {
     if (!gallerySlug) return undefined;
     const prefix = `${routeBase}/${gallerySlug}/photo/`;
@@ -87,6 +82,7 @@ export function GalleryView() {
     const rawPhotoId = pathname.slice(prefix.length).split("/")[0];
     return rawPhotoId ? decodeURIComponent(rawPhotoId) : undefined;
   }, [gallerySlug, routeBase]);
+
   const [routePhotoId, setRoutePhotoId] = useState<string | undefined>(() => getPhotoIdFromPath(window.location.pathname));
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -105,6 +101,7 @@ export function GalleryView() {
   const [exportProgress, setExportProgress] = useState<string | null>(null);
   const [exportDone, setExportDone] = useState(false);
   const [showInfo, setShowInfo] = useState(true);
+  const [shareState, setShareState] = useState<"idle" | "shared" | "copied" | "failed">("idle");
 
   const loadingMoreRef = useRef(false);
   const observerRef = useRef<IntersectionObserver | null>(null);
@@ -114,34 +111,25 @@ export function GalleryView() {
   const [pendingScrollToIndex, setPendingScrollToIndex] = useState<number | undefined>(undefined);
   getPhotoIdFromPathRef.current = getPhotoIdFromPath;
 
-  // Keep modal route state synced when React Router navigates normally.
-  // Mirror router pathname changes into the local modal-photo state.
   useEffect(() => {
     setRoutePhotoId(getPhotoIdFromPath(location.pathname));
   }, [location.pathname, getPhotoIdFromPath]);
 
-  // Back/forward events are outside React, so listen once at window level.
-  // A ref keeps the latest pathname parser without re-subscribing the listener.
-  // Keep browser back/forward shallow-route changes in sync with the modal state.
   useEffect(() => {
     const onPopState = () => {
       setRoutePhotoId(getPhotoIdFromPathRef.current(window.location.pathname));
     };
     window.addEventListener("popstate", onPopState);
-    return () => {
-      window.removeEventListener("popstate", onPopState);
-    };
+    return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
   const fetchPhotos = useCallback(
     async (cursor?: string): Promise<FetchPhotosResult> => {
       const url = `${apiBase}/galleries/${gallerySlug}/photos${cursor ? `?cursor=${cursor}` : ""}`;
       const res = await fetch(url, { credentials: "include" });
-
       if (res.status === 401 || res.status === 403) {
         return { needsAuth: true, photos: [], nextCursor: null, total: 0 };
       }
-
       const data = await res.json() as { photos: Photo[]; nextCursor: string | null; total: number };
       return { needsAuth: false, photos: data.photos ?? [], nextCursor: data.nextCursor ?? null, total: data.total ?? 0 };
     },
@@ -158,16 +146,12 @@ export function GalleryView() {
     [gallerySlug, apiBase]
   );
 
-  // Load gallery metadata and the first photo page whenever the gallery slug changes.
   useEffect(() => {
     let cancelled = false;
-
     let isPublicGallery = false;
 
     async function init() {
       setLoading(true);
-
-      // 1. Load gallery metadata — handle 410 (expired), 404 (not found), and network errors
       try {
         const metaRes = await fetch(`${apiBase}/galleries/${gallerySlug}`);
         if (cancelled) return;
@@ -186,12 +170,10 @@ export function GalleryView() {
         return;
       }
 
-      // 2. Fetch photos — middleware allows public galleries through without a token
       try {
         const data = await fetchPhotos();
         if (cancelled) return;
         if (data.needsAuth) {
-          // Only redirect to password login for private galleries
           if (!isPublicGallery) {
             navigate(`${routeBase}/${gallerySlug}/login?next=${encodeURIComponent(window.location.pathname)}`, { replace: true });
           }
@@ -200,7 +182,6 @@ export function GalleryView() {
         setPhotos(data.photos);
         setNextCursor(data.nextCursor);
         setTotal(data.total);
-
       } catch {
         setError("Failed to load photos");
       } finally {
@@ -231,77 +212,50 @@ export function GalleryView() {
       loadingMoreRef.current = false;
       setLoadingMore(false);
     }
-  }, [nextCursor, gallerySlug, isPublic, navigate, fetchPhotos]);
+  }, [nextCursor, gallerySlug, isPublic, navigate, fetchPhotos, routeBase]);
 
-  // Resolve the active route photo into a full lightbox object, fetching it if needed.
   useEffect(() => {
     let cancelled = false;
-
     async function syncLightboxWithRoute() {
       if (!routePhotoId) {
         setLightbox((current) => (current ? null : current));
         return;
       }
-
       const matching = photos.find((p) => p.id === routePhotoId);
       if (matching) {
         setLightbox((current) => (current?.id === matching.id ? current : matching));
         return;
       }
-
       const deepLinkedPhoto = await fetchSinglePhoto(routePhotoId);
       if (cancelled || !deepLinkedPhoto) return;
-
-      setLightbox((current) =>
-        current?.id === deepLinkedPhoto.id ? current : deepLinkedPhoto
-      );
+      setLightbox((current) => current?.id === deepLinkedPhoto.id ? current : deepLinkedPhoto);
     }
-
     syncLightboxWithRoute();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [routePhotoId, photos, fetchSinglePhoto]);
 
-  // Clear the one-shot masonry scroll target after it has been applied for a frame.
   useEffect(() => {
     if (pendingScrollToIndex == null) return;
-
-    const frame = window.requestAnimationFrame(() => {
-      setPendingScrollToIndex(undefined);
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frame);
-    };
+    const frame = window.requestAnimationFrame(() => setPendingScrollToIndex(undefined));
+    return () => window.cancelAnimationFrame(frame);
   }, [pendingScrollToIndex]);
 
-  // On first entry via a photo URL, keep paging until that photo is loaded and then scroll to it.
   useEffect(() => {
     const targetPhotoId = initialRoutePhotoIdRef.current;
     if (!targetPhotoId || initialDeepLinkScrollCompleteRef.current || loading) return;
-
     const targetIndex = photos.findIndex((photo) => photo.id === targetPhotoId);
     if (targetIndex >= 0) {
       initialDeepLinkScrollCompleteRef.current = true;
       setPendingScrollToIndex(targetIndex);
       return;
     }
-
-    if (nextCursor && !loadingMore) {
-      void loadMore();
-      return;
-    }
-
-    if (!nextCursor) {
-      initialDeepLinkScrollCompleteRef.current = true;
-    }
+    if (nextCursor && !loadingMore) { void loadMore(); return; }
+    if (!nextCursor) initialDeepLinkScrollCompleteRef.current = true;
   }, [photos, nextCursor, loading, loadingMore, loadMore]);
 
   const openLightbox = useCallback(
     (photo: Photo) => {
       setLightbox(photo);
-      // Shallow URL update: keep grid data/state intact while reflecting modal state.
       window.history.pushState({}, "", `${routeBase}/${gallerySlug}/photo/${encodeURIComponent(photo.id)}`);
       setRoutePhotoId(photo.id);
     },
@@ -310,7 +264,6 @@ export function GalleryView() {
 
   const closeLightbox = useCallback(() => {
     setLightbox(null);
-    // Mirror modal close in URL without triggering a route-level navigation.
     window.history.pushState({}, "", `${routeBase}/${gallerySlug}`);
     setRoutePhotoId(undefined);
   }, [gallerySlug, routeBase]);
@@ -331,13 +284,13 @@ export function GalleryView() {
 
   async function handleExport() {
     setExporting(true);
-    setExportProgress("Preparing export…");
+    setExportProgress("Preparing export...");
     try {
       const res = await fetch(`${apiBase}/galleries/${gallerySlug}/export`, { credentials: "include" });
       if (!res.ok) throw new Error("Export failed");
       const data = await res.json() as { galleryName: string; photos: { name: string; url: string }[] };
       await exportGallery(data.galleryName, data.photos, (done, total) => {
-        setExportProgress(`Downloading ${done} / ${total}…`);
+        setExportProgress(`Downloading ${done} / ${total}...`);
       });
     } catch (err) {
       console.error(err);
@@ -350,88 +303,81 @@ export function GalleryView() {
     }
   }
 
+  async function handleShare() {
+    const url = `${window.location.origin}${routeBase}/${gallerySlug}`;
+    const result = await shareUrl(galleryName || gallerySlug || "Gallery", url);
+    setShareState(result);
+    setTimeout(() => setShareState("idle"), 2000);
+  }
+
+  const shareLabel =
+    shareState === "copied" ? "+ Link copied!" :
+      shareState === "shared" ? "+ Shared" :
+        shareState === "failed" ? "Share failed" :
+          "Share";
+
   return (
-    <div style={{ minHeight: "100vh", padding: "24px" }}>
-      {/* Expired gallery message */}
+    <div className="min-h-screen p-6">
       {expired && (
-        <div style={{ maxWidth: 480, margin: "80px auto", textAlign: "center" }}>
+        <div className="max-w-[480px] mx-auto mt-20 text-center">
           <ErrorMessage message="This gallery has expired and is no longer available." />
-          <a href="/" style={{ fontSize: "0.9rem", color: "var(--color-text-muted)" }}>← Back to galleries</a>
+          <a href="/" className="text-sm text-neutral-500">Back to galleries</a>
         </div>
       )}
 
       {!expired && (
         <>
-          {/* Banner */}
           {bannerKey && (
-            <div style={{ width: "100%", maxHeight: 340, overflow: "hidden", marginBottom: 0 }}>
+            <div className="w-full max-h-[340px] overflow-hidden">
               <img
                 src={`/api/images/${bannerKey}?variant=banner`}
                 alt="Gallery banner"
-                style={{ width: "100%", height: 340, objectFit: "cover", display: "block" }}
+                className="w-full h-[340px] object-cover block"
               />
             </div>
           )}
 
-          {/* Header */}
-          <div
-            style={{
-              maxWidth: 1200,
-              margin: "32px auto 32px",
-              display: "flex",
-              flexWrap: "wrap",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "12px 16px",
-            }}
-          >
-            <div style={{ minWidth: 0 }}>
-              <h1 style={{ fontSize: "1.75rem", fontWeight: 700, margin: 0, lineHeight: 1.2 }}>
+          <div className="max-w-[1200px] mx-auto my-8 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+            <div className="min-w-0">
+              <h1 className="text-[1.75rem] font-bold leading-tight">
                 {galleryName || gallerySlug}
               </h1>
               {eventDate && (
-                <div style={{ fontSize: "0.85rem", color: "var(--color-text-muted)", marginTop: 4 }}>
-                  📅 {new Date(eventDate * 1000).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}
+                <div className="text-[0.85rem] text-neutral-500 mt-1">
+                  {new Date(eventDate * 1000).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}
                 </div>
               )}
             </div>
             {photos.length > 0 && (
-              <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+              <div className="flex gap-2 items-center shrink-0">
                 <button
                   onClick={() => setShowInfo((v) => !v)}
                   title={showInfo ? "Hide photo info overlays" : "Show photo info overlays"}
-                  style={{
-                    padding: "8px 12px",
-                    background: showInfo ? "var(--color-surface)" : "none",
-                    border: `1px solid var(--color-border)`,
-                    borderRadius: "var(--radius)",
-                    color: showInfo ? "var(--color-text)" : "var(--color-text-muted)",
-                    fontSize: "0.85rem",
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                    transition: "background 0.2s, color 0.2s",
-                    fontFamily: "'Courier New', Courier, monospace",
-                  }}
+                  className={`px-3 py-2 border border-neutral-800 rounded-lg text-[0.85rem] font-mono whitespace-nowrap transition-colors cursor-pointer ${showInfo ? "bg-neutral-900 text-neutral-100" : "bg-transparent text-neutral-500"
+                    }`}
                 >
                   {showInfo ? "Info on" : "Info off"}
                 </button>
                 <button
+                  onClick={handleShare}
+                  title="Share gallery URL"
+                  className={`px-3 py-2 border rounded-lg text-[0.85rem] whitespace-nowrap transition-colors cursor-pointer ${shareState === "shared" || shareState === "copied"
+                    ? "bg-amber-400 border-amber-400 text-neutral-950 font-semibold"
+                    : "bg-transparent border-neutral-800 text-neutral-100"
+                    }`}
+                >
+                  {shareLabel}
+                </button>
+                <button
                   onClick={handleExport}
                   disabled={exporting}
-                  style={{
-                    padding: "8px 16px",
-                    background: exportDone ? "var(--color-accent)" : "none",
-                    border: `1px solid ${exportDone ? "var(--color-accent)" : "var(--color-border)"}`,
-                    borderRadius: "var(--radius)",
-                    color: exportDone ? "#0f0f0f" : exporting ? "var(--color-text-muted)" : "var(--color-text)",
-                    fontSize: "0.85rem",
-                    fontWeight: exportDone ? 600 : 400,
-                    cursor: exporting ? "not-allowed" : "pointer",
-                    whiteSpace: "nowrap",
-                    transition: "background 0.2s, color 0.2s, border-color 0.2s",
-                  }}
+                  className={`px-4 py-2 border rounded-lg text-[0.85rem] whitespace-nowrap transition-colors ${exporting ? "cursor-not-allowed text-neutral-500" : "cursor-pointer text-neutral-100"
+                    } ${exportDone
+                      ? "bg-amber-400 border-amber-400 text-neutral-950 font-semibold"
+                      : "bg-transparent border-neutral-800"
+                    }`}
                 >
-                  {exportDone ? "✓ Saved!" : exporting ? exportProgress : "⬇ Download all"}
+                  {exportDone ? "Saved!" : exporting ? exportProgress : "Download all"}
                 </button>
               </div>
             )}
@@ -440,9 +386,8 @@ export function GalleryView() {
           {loading && <SpinnerOverlay />}
           {error && <ErrorMessage message={error} onRetry={() => { setError(null); setRetryCount((c) => c + 1); }} />}
 
-          {/* Photo grid */}
           {!loading && (
-            <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+            <div className="max-w-[1200px] mx-auto">
               <MasonryGrid
                 photos={photos}
                 total={total}
@@ -450,9 +395,9 @@ export function GalleryView() {
                 showInfo={showInfo}
                 scrollToIndex={pendingScrollToIndex}
               />
-              <div ref={setSentinel} style={{ height: 1 }} />
+              <div ref={setSentinel} className="h-px" />
               {loadingMore && (
-                <div style={{ display: "flex", justifyContent: "center", padding: "16px 0" }}>
+                <div className="flex justify-center py-4">
                   <Spinner />
                 </div>
               )}
@@ -476,5 +421,3 @@ export function GalleryView() {
     </div>
   );
 }
-
-

@@ -12,9 +12,9 @@ import { TenantProvider } from "@/client/lib/tenantContext";
 function LegacyGalleryRedirect() {
   const { gallerySlug } = useParams<{ gallerySlug: string }>();
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "60vh", gap: 16, fontFamily: "inherit" }}>
-      <h2 style={{ fontSize: "1.25rem", fontWeight: 700 }}>Link outdated</h2>
-      <p style={{ color: "var(--color-text-muted)", textAlign: "center", maxWidth: 380 }}>
+    <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+      <h2 className="text-xl font-bold">Link outdated</h2>
+      <p className="text-neutral-500 text-center max-w-[380px]">
         The URL <code>/gallery/{gallerySlug}</code> is no longer valid.
         Please reach out to get a new link.
       </p>

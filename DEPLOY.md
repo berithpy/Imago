@@ -117,9 +117,8 @@ npm run setup:dev
 # 2. Apply migrations to local DB
 npm run db:migrate:local
 
-# 3. Start the worker and frontend
-npx wrangler dev --port 8787   # Terminal 1
-npm run dev                     # Terminal 2
+# 3. Start the worker and frontend (runs both concurrently)
+npm run dev
 ```
 
 > **Email in local dev:** `setup:dev` sets `RESEND_API_KEY` to a placeholder. Emails won't be sent — instead a warning is logged to the wrangler console. To test real email delivery locally, replace the `RESEND_API_KEY` and `FROM_EMAIL` values in `.dev.vars` with your actual key and a verified sender address.

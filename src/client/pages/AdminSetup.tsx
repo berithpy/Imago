@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FieldError } from "@/client/components/ErrorMessage";
-import { cardStyle, inputLargeStyle, fullWidthButtonStyle } from "@/client/components/ui";
 import { useTenant } from "@/client/lib/tenantContext";
+
+const inputLargeClass =
+  "w-full px-4 py-3 bg-neutral-900 border border-neutral-800 rounded-lg text-neutral-100 text-base outline-none";
 
 export function AdminSetup() {
   const navigate = useNavigate();
@@ -42,47 +44,28 @@ export function AdminSetup() {
 
   if (done) {
     return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <p style={{ color: "var(--color-accent)", fontSize: "1.1rem" }}>
-          ✓ Admin account created. Redirecting to login…
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-amber-400 text-lg">
+          + Admin account created. Redirecting to login...
         </p>
       </div>
     );
   }
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 24,
-      }}
-    >
-      <div style={{ width: "100%", maxWidth: 400 }}>
-        <div style={{ ...cardStyle, padding: "32px 28px" }}>
-          <p
-            style={{
-              fontSize: "0.7rem",
-              fontWeight: 700,
-              letterSpacing: "0.12em",
-              textTransform: "uppercase",
-              color: "var(--color-text-muted)",
-              margin: "0 0 20px",
-            }}
-          >
+    <div className="min-h-screen flex items-center justify-center p-6">
+      <div className="w-full max-w-[400px]">
+        <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-7 py-8">
+          <p className="text-[0.7rem] font-bold tracking-[0.12em] uppercase text-neutral-500 mb-5 mt-0">
             Imago
           </p>
 
-          <h1 style={{ fontSize: "1.4rem", fontWeight: 700, margin: "0 0 8px" }}>
-            Admin Setup
-          </h1>
-          <p style={{ color: "var(--color-text-muted)", margin: "0 0 24px", fontSize: "0.9rem" }}>
+          <h1 className="text-[1.4rem] font-bold mb-2 mt-0">Admin Setup</h1>
+          <p className="text-neutral-500 text-sm mb-6 mt-0">
             Create the admin account. This can only be done once.
           </p>
 
-          <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <input
               type="text"
               value={name}
@@ -90,7 +73,7 @@ export function AdminSetup() {
               placeholder="Your name"
               required
               autoFocus
-              style={inputLargeStyle}
+              className={inputLargeClass}
             />
             <input
               type="email"
@@ -98,7 +81,7 @@ export function AdminSetup() {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="Email"
               required
-              style={inputLargeStyle}
+              className={inputLargeClass}
             />
             <input
               type="password"
@@ -107,14 +90,14 @@ export function AdminSetup() {
               placeholder="Password (min 8 characters)"
               required
               minLength={8}
-              style={inputLargeStyle}
+              className={inputLargeClass}
             />
             <input
               type="email"
               value={recoveryEmail}
               onChange={(e) => setRecoveryEmail(e.target.value)}
               placeholder="Recovery email (optional, defaults to admin email)"
-              style={inputLargeStyle}
+              className={inputLargeClass}
             />
 
             {error && <FieldError message={error} />}
@@ -122,9 +105,9 @@ export function AdminSetup() {
             <button
               type="submit"
               disabled={loading}
-              style={{ ...fullWidthButtonStyle, opacity: loading ? 0.7 : 1 }}
+              className={`w-full px-4 py-3 bg-amber-400 border-0 rounded-lg text-neutral-950 font-semibold text-base cursor-pointer ${loading ? "opacity-70" : ""}`}
             >
-              {loading ? "Creating…" : "Create Admin Account"}
+              {loading ? "Creating..." : "Create Admin Account"}
             </button>
           </form>
         </div>

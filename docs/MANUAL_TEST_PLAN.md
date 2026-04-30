@@ -20,7 +20,6 @@ Run the suite in both environments when possible.
 npm install
 npm run setup:dev
 npm run db:migrate:local
-npm run worker:dev
 npm run dev
 ```
 
