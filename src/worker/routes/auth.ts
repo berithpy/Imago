@@ -35,7 +35,13 @@ viewerRoutes.post("/gallery/:slug/login", async (c) => {
 
   const exp = Math.floor(Date.now() / 1000) + 60 * 60 * 24; // 24h
   const token = await sign(
-    { sub: "viewer", galleryId: gallery.id, tenantId: gallery.tenant_id, exp },
+    {
+      sub: "viewer",
+      galleryId: gallery.id,
+      tenantId: gallery.tenant_id,
+      auth_method: "password",
+      exp,
+    },
     c.env.JWT_SECRET
   );
 
@@ -121,7 +127,7 @@ viewerRoutes.post("/admin/recover", async (c) => {
     return c.json({ error: "Invalid reset secret" }, 403);
   }
   await c.env.DB.prepare("DELETE FROM user").run();
-  await logAdminEvent(c.env.DB, "ADMIN_RECOVER");
+  await logAdminEvent(c.env.DB, "ADMIN_RECOVER", { actorTypeOverride: "system" });
   return c.json({ ok: true });
 });
 

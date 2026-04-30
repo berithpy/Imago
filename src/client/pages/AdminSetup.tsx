@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FieldError } from "@/client/components/ErrorMessage";
 import { useTenant } from "@/client/lib/tenantContext";
+import { Button } from "@/client/components/Button";
 
 const inputLargeClass =
   "w-full px-4 py-3 bg-neutral-900 border border-neutral-800 rounded-lg text-neutral-100 text-base outline-none";
@@ -102,13 +103,14 @@ export function AdminSetup() {
 
             {error && <FieldError message={error} />}
 
-            <button
+            <Button
               type="submit"
-              disabled={loading}
-              className={`w-full px-4 py-3 bg-amber-400 border-0 rounded-lg text-neutral-950 font-semibold text-base cursor-pointer ${loading ? "opacity-70" : ""}`}
+              loading={loading}
+              analyticsId="admin_setup_submit"
+              className={`w-full px-4 py-3 rounded-lg ${loading ? "opacity-70" : ""}`}
             >
               {loading ? "Creating..." : "Create Admin Account"}
-            </button>
+            </Button>
           </form>
         </div>
       </div>

@@ -3,6 +3,7 @@ import { FieldError } from "@/client/components/ErrorMessage";
 import { PasswordField } from "@/client/components/PasswordField";
 import { EmailListInput } from "@/client/components/EmailListInput";
 import { useTenant } from "@/client/lib/tenantContext";
+import { Button } from "@/client/components/Button";
 
 const inputClass =
   "w-full px-4 py-3 bg-neutral-950 border border-neutral-800 rounded-lg text-neutral-100 text-sm outline-none";
@@ -223,20 +224,24 @@ export function CreateGalleryForm({ onCreated, onCancel }: Props) {
       {error && <FieldError message={error} />}
 
       <div className="flex gap-2">
-        <button
+        <Button
           type="submit"
           disabled={creating || slugStatus === "taken" || slugStatus === "reserved" || slugStatus === "invalid"}
+          loading={creating}
+          analyticsId="gallery_create_submit"
           className={accentBtnClass}
         >
           {creating ? "Creating..." : "Create"}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="ghost"
           onClick={onCancel}
-          className="px-4 py-2 bg-transparent border border-neutral-800 rounded-lg text-neutral-500 text-sm cursor-pointer"
+          analyticsId="gallery_create_cancel"
+          className="px-4 py-2 bg-transparent border border-neutral-800 rounded-lg text-neutral-500 text-sm"
         >
           Cancel
-        </button>
+        </Button>
       </div>
     </form>
   );

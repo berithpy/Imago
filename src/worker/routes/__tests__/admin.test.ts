@@ -120,6 +120,34 @@ describe("admin routes", () => {
     }
   });
 
+  it("returns 403 on superAdmin-only endpoints when session user is not a platform operator", async () => {
+    // Authenticated session, but the user is not a member of the imago org.
+    await harness.seedUser({ email: "admin@example.com" });
+
+    const cases: Array<{ path: string; init?: RequestInit; status: number }> = [
+      { path: "/api/tenant/log", status: 403 },
+      {
+        path: "/api/tenant/users/invite",
+        init: {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ email: "x@example.com", name: "X" }),
+        },
+        status: 403,
+      },
+      {
+        path: `/api/tenant/galleries/${crypto.randomUUID()}/permanent`,
+        init: { method: "DELETE" },
+        status: 403,
+      },
+    ];
+
+    for (const tc of cases) {
+      const res = await harness.request(tc.path, tc.init);
+      expect(res.status, `${tc.init?.method ?? "GET"} ${tc.path}`).toBe(tc.status);
+    }
+  });
+
   it("POST + GET /api/tenant/galleries creates then lists gallery", async () => {
     const createRes = await harness.request("/api/tenant/galleries", {
       method: "POST",
@@ -316,6 +344,9 @@ describe("admin routes", () => {
   });
 
   it("DELETE /permanent removes gallery and its photos", async () => {
+    // Permanent delete is operator-level only, so seed the session user as
+    // a platform operator (no tenantId in context on the global mount).
+    await harness.seedUser({ email: "admin@example.com", isSuperAdmin: true });
     const gallery = await harness.seedGallery({ slug: "perm-gal", isPublic: false });
     const photoId = crypto.randomUUID();
     await harness.runSql(
@@ -337,7 +368,7 @@ describe("admin routes", () => {
   it("GET /users and POST /users/invite work and create admin log entry", async () => {
     await harness.seedUser({ email: "admin@example.com", isSuperAdmin: true });
     await harness.runSql(
-      "INSERT INTO user (id, name, email, emailVerified, is_super_admin, createdAt, updatedAt) VALUES (?, ?, ?, ?, 0, unixepoch(), unixepoch())",
+      "INSERT INTO user (id, name, email, emailVerified, createdAt, updatedAt) VALUES (?, ?, ?, ?, unixepoch(), unixepoch())",
       [crypto.randomUUID(), "Existing", "existing@example.com", 1]
     );
 
@@ -420,5 +451,44 @@ describe("admin routes", () => {
     const res = await harness.request("/api/tenant/galleries/check-slug?slug=manage");
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ valid: true, available: false, reserved: true });
+  });
+
+  // ------------------------------------------------------------------
+  // admin_log actor tracking
+  // ------------------------------------------------------------------
+
+  it("logs GALLERY_CREATED with imago_operator actor when super-admin creates", async () => {
+    const user = await harness.seedUser({
+      email: "admin@example.com",
+      isSuperAdmin: true,
+    });
+    mockGetSession.mockResolvedValue({ user: { email: user.email } });
+
+    const res = await harness.request("/api/tenant/galleries", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Logged", slug: "logged-gal", password: "pw1234" }),
+    });
+    expect(res.status).toBe(201);
+
+    const log = await harness.env.DB.prepare(
+      "SELECT actor_type, actor_user_id, detail FROM admin_log WHERE event = 'GALLERY_CREATED'"
+    ).first<{ actor_type: string; actor_user_id: string; detail: string }>();
+    expect(log?.actor_type).toBe("imago_operator");
+    expect(log?.actor_user_id).toBe(user.id);
+    expect(log?.detail).toBe("logged-gal");
+  });
+
+  it("logs ADMIN_SETUP with system actor", async () => {
+    await harness.request("/api/tenant/setup", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "first@example.com", password: "secret123", name: "First" }),
+    });
+
+    const log = await harness.env.DB.prepare(
+      "SELECT actor_type FROM admin_log WHERE event = 'ADMIN_SETUP'"
+    ).first<{ actor_type: string }>();
+    expect(log?.actor_type).toBe("system");
   });
 });

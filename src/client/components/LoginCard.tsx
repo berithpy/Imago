@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { FieldError } from "@/client/components/ErrorMessage";
+import { Button } from "@/client/components/Button";
 
 type Props = {
   title: string;
@@ -12,13 +13,9 @@ type Props = {
   onAdminBypass?: () => Promise<void>;
 };
 
-const cardClass = "w-full max-w-[420px] bg-neutral-900 border border-neutral-800 rounded-lg px-10 py-12";
+const cardClass = "w-full max-w-[420px] min-h-[340px] bg-neutral-900 border border-neutral-800 rounded-lg px-10 py-12";
 const inputLargeClass =
   "w-full px-4 py-3.5 bg-neutral-900 border border-neutral-800 rounded-lg text-neutral-100 text-base outline-none";
-const fullWidthAccentClass =
-  "w-full px-5 py-3.5 bg-amber-400 border-0 rounded-lg text-neutral-950 font-semibold text-base cursor-pointer disabled:opacity-60";
-const ghostFullWidthClass =
-  "w-full px-5 py-3.5 bg-transparent border border-neutral-800 rounded-lg text-neutral-500 text-base cursor-pointer disabled:opacity-60";
 
 export function LoginCard({
   title,
@@ -72,7 +69,7 @@ export function LoginCard({
           Imago
         </p>
         <h1 className="text-[1.4rem] font-bold mb-2">{title}</h1>
-        {subtitle && <p className="text-neutral-500 text-sm mb-6">{subtitle}</p>}
+        {subtitle && !emailSent && <p className="text-neutral-500 text-sm mb-6">{subtitle}</p>}
 
         {emailSent ? (
           <div className="text-amber-400 text-sm">
@@ -90,27 +87,34 @@ export function LoginCard({
               className={inputLargeClass}
             />
             {error && <FieldError message={error} />}
-            <button type="submit" disabled={submitting} className={fullWidthAccentClass}>
+            <Button type="submit" size="lg" loading={submitting} analyticsId="login_submit" analyticsParams={{ login_mode: "magic_link" }} className="w-full">
               {submitting ? "Sending..." : "Send magic link"}
-            </button>
+            </Button>
             {showPasswordFallback && onPassword && (
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="lg"
                 onClick={() => { setMode("password"); setError(null); }}
-                className={ghostFullWidthClass}
+                analyticsId="login_toggle_magic_link"
+                analyticsParams={{ to_mode: "password" }}
+                className="w-full"
               >
                 Use password instead
-              </button>
+              </Button>
             )}
             {showAdminBypass && onAdminBypass && (
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="lg"
                 onClick={onAdminBypass}
-                disabled={bypassLoading}
-                className={ghostFullWidthClass}
+                loading={bypassLoading}
+                analyticsId="login_admin_bypass"
+                className="w-full"
               >
                 {bypassLoading ? "..." : "Admin: enter as viewer"}
-              </button>
+              </Button>
             )}
           </form>
         ) : (
@@ -125,16 +129,20 @@ export function LoginCard({
               className={inputLargeClass}
             />
             {error && <FieldError message={error} />}
-            <button type="submit" disabled={submitting} className={fullWidthAccentClass}>
+            <Button type="submit" size="lg" loading={submitting} analyticsId="login_submit" analyticsParams={{ login_mode: "password" }} className="w-full">
               {submitting ? "Signing in..." : "Sign in"}
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="ghost"
+              size="lg"
               onClick={() => { setMode("email"); setError(null); }}
-              className={ghostFullWidthClass}
+              analyticsId="login_toggle_magic_link"
+              analyticsParams={{ to_mode: "magic_link" }}
+              className="w-full"
             >
               Use magic link instead
-            </button>
+            </Button>
           </form>
         )}
       </div>

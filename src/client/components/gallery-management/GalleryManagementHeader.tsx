@@ -1,4 +1,3 @@
-import { Link } from "react-router-dom";
 import { useState, type ReactNode } from "react";
 import { exportGallery } from "@/client/lib/exportGallery";
 import { formatDate, type Gallery } from "@/client/lib/galleryManagement";
@@ -136,13 +135,7 @@ export function GalleryManagementHeader({
   return (
     <div className="flex flex-wrap justify-between items-start mb-8 gap-5">
       <div className="min-w-0">
-        <Link to={`${routeBase}/manage`} className="text-sm text-neutral-500">
-          Back to galleries
-        </Link>
-        <div className="mt-2 text-[0.72rem] tracking-[0.08em] text-neutral-500 font-semibold">
-          GALLERY MANAGEMENT
-        </div>
-        <h1 className="text-[1.75rem] font-bold mt-1">
+        <h1 className="text-[1.75rem] font-bold">
           {gallery?.name ?? "Gallery"}
         </h1>
 

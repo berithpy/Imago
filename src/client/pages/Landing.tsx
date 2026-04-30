@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createT, useLocale, type Locale } from "@/client/lib/i18n";
+import { Button } from "@/client/components/Button";
+import { useAuth } from "@/client/lib/authContext";
 
 const dict = {
   en: {
     nav_lang_en: "EN",
     nav_lang_es: "ES",
+    nav_login: "Log in",
+    nav_dashboard: "Dashboard",
 
     hero_tagline: "A simple hosted gallery service for photographers.",
     hero_subtagline:
@@ -70,6 +74,8 @@ const dict = {
   es: {
     nav_lang_en: "EN",
     nav_lang_es: "ES",
+    nav_login: "Entrar",
+    nav_dashboard: "Panel",
 
     hero_tagline: "Un servicio simple de galerías para fotógrafos.",
     hero_subtagline:
@@ -208,6 +214,7 @@ function HeroTile({ aspect, src }: { aspect: string; src: string }) {
 
 export function Landing() {
   const { locale, setLocale } = useLocale();
+  const { auth, loading: authLoading } = useAuth();
   const formRef = useRef<HTMLDivElement | null>(null);
   const whatRef = useRef<HTMLDivElement | null>(null);
   const [email, setEmail] = useState("");
@@ -246,6 +253,14 @@ export function Landing() {
     ref.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
+  const signedInHref = auth?.superAdmin
+    ? "/operator"
+    : auth?.memberships[0]
+      ? `/${auth.memberships[0].tenantSlug}/manage`
+      : "/login/resolve";
+  const navHref = auth && !authLoading ? signedInHref : "/login";
+  const navLabel = auth && !authLoading ? t(locale, "nav_dashboard") : t(locale, "nav_login");
+
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const trimmed = email.trim();
@@ -279,10 +294,10 @@ export function Landing() {
           <div className="text-xl font-semibold tracking-tight text-amber-400">Imago</div>
           <div className="flex items-center gap-4">
             <a
-              href="/login"
+              href={navHref}
               className="text-sm text-neutral-400 hover:text-neutral-200 transition-colors"
             >
-              Log in
+              {navLabel}
             </a>
             <LocaleToggle locale={locale} onChange={setLocale} />
           </div>
@@ -301,13 +316,14 @@ export function Landing() {
                 {t(locale, "hero_subtagline")}
               </p>
               <div className="flex flex-wrap gap-3">
-                <button
+                <Button
                   type="button"
                   onClick={() => scrollTo(formRef)}
-                  className="px-5 py-3 bg-amber-400 text-neutral-950 font-semibold rounded-lg border-0 hover:bg-amber-300 transition-colors"
+                  analyticsId="landing_hero_cta"
+                  className="px-5 py-3 rounded-lg hover:bg-amber-300"
                 >
                   {t(locale, "hero_cta")}
-                </button>
+                </Button>
                 <button
                   type="button"
                   onClick={() => scrollTo(whatRef)}

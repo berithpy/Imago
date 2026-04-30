@@ -1,7 +1,11 @@
 import { Context, Next } from "hono";
 import { Bindings } from "../index";
 
-export type TenantVariables = { tenantId?: string };
+export type TenantVariables = {
+  tenantId?: string;
+  tenantSlug?: string;
+  tenantName?: string;
+};
 
 /**
  * Middleware: resolve tenant from `:tenantSlug` path parameter and inject
@@ -16,12 +20,14 @@ export async function requireTenant(
   if (!slug) return c.json({ error: "Tenant required" }, 400);
 
   const tenant = await c.env.DB
-    .prepare("SELECT id FROM tenants WHERE slug = ? AND deleted_at IS NULL")
+    .prepare("SELECT id, slug, name FROM tenants WHERE slug = ? AND deleted_at IS NULL")
     .bind(slug)
-    .first<{ id: string }>();
+    .first<{ id: string; slug: string; name: string }>();
 
   if (!tenant) return c.json({ error: "Tenant not found" }, 404);
 
   c.set("tenantId", tenant.id);
+  c.set("tenantSlug", tenant.slug);
+  c.set("tenantName", tenant.name);
   await next();
 }

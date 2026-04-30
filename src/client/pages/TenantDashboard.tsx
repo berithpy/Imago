@@ -1,31 +1,31 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { createAuthClient } from "better-auth/client";
 import { SpinnerOverlay } from "@/client/components/Spinner";
 import { CreateGalleryForm } from "@/client/components/CreateGalleryForm";
 import { GalleryList } from "@/client/components/GalleryList";
 import { useTenant } from "@/client/lib/tenantContext";
-
-const authClient = createAuthClient({ baseURL: `${window.location.origin}/api/auth` });
+import { useAuth } from "@/client/lib/authContext";
+import { AppShell } from "@/client/components/shell/AppShell";
+import { Button } from "@/client/components/Button";
 
 export function TenantDashboard() {
   const navigate = useNavigate();
-  const { apiBase, routeBase } = useTenant();
+  const { apiBase, routeBase, tenantSlug } = useTenant();
+  const { auth, loading } = useAuth();
   const [showCreate, setShowCreate] = useState(false);
-  const [sessionChecked, setSessionChecked] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
-    authClient.getSession({ fetchOptions: { credentials: "include" } }).then(({ data }) => {
-      if (!data?.session) navigate(`${routeBase}/login`);
-      else setSessionChecked(true);
-    });
-  }, [navigate, routeBase]);
-
-  async function handleSignOut() {
-    await authClient.signOut({ fetchOptions: { credentials: "include" } });
-    navigate(`${routeBase}/login`);
-  }
+    if (loading) return;
+    if (!auth) {
+      navigate(`${routeBase}/login`);
+      return;
+    }
+    // Authorized iff super-admin or member of this tenant.
+    if (auth.superAdmin) return;
+    const ok = auth.memberships.some((m) => m.tenantSlug === tenantSlug);
+    if (!ok) navigate(`${routeBase}/login`);
+  }, [auth, loading, tenantSlug, routeBase, navigate]);
 
   async function handleSoftDelete(id: string) {
     await fetch(`${apiBase}/admin/galleries/${id}`, { method: "DELETE", credentials: "include" });
@@ -39,53 +39,39 @@ export function TenantDashboard() {
     await fetch(`${apiBase}/admin/galleries/${id}/permanent`, { method: "DELETE", credentials: "include" });
   }
 
+  if (loading || !auth) return <SpinnerOverlay label="Loading..." />;
+
   return (
-    <div className="max-w-[900px] mx-auto px-6 py-10">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-10">
-        <div>
-          <a href={routeBase || "/"} className="text-sm text-neutral-500">Site</a>
-          <h1 className="text-[1.75rem] font-bold mt-1">Admin</h1>
-        </div>
-        <button
-          onClick={handleSignOut}
-          className="px-4 py-2 bg-transparent border border-neutral-800 rounded-lg text-neutral-500 text-sm cursor-pointer"
-        >
-          Sign out
-        </button>
-      </div>
+    <AppShell>
+      <div className="max-w-[900px] mx-auto px-6 py-10">
+        <section>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-[1.1rem] font-semibold">Galleries</h2>
+            <Button
+              onClick={() => setShowCreate(!showCreate)}
+              analyticsId="tenant_new_gallery"
+              analyticsParams={{ action: showCreate ? "cancel" : "open" }}
+              className="px-4 py-2 rounded-lg text-sm"
+            >
+              {showCreate ? "Cancel" : "+ New Gallery"}
+            </Button>
+          </div>
 
-      {/* Galleries */}
-      <section>
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-[1.1rem] font-semibold">Galleries</h2>
-          <button
-            onClick={() => setShowCreate(!showCreate)}
-            className="px-4 py-2 bg-amber-400 border-0 rounded-lg text-neutral-950 font-semibold text-sm cursor-pointer"
-          >
-            {showCreate ? "Cancel" : "+ New Gallery"}
-          </button>
-        </div>
+          {showCreate && (
+            <CreateGalleryForm
+              onCreated={() => { setShowCreate(false); setRefreshKey((k) => k + 1); }}
+              onCancel={() => setShowCreate(false)}
+            />
+          )}
 
-        {/* Create gallery form */}
-        {showCreate && (
-          <CreateGalleryForm
-            onCreated={() => { setShowCreate(false); setRefreshKey((k) => k + 1); }}
-            onCancel={() => setShowCreate(false)}
-          />
-        )}
-
-        {!sessionChecked ? (
-          <SpinnerOverlay label="Loading..." />
-        ) : (
           <GalleryList
             refreshKey={refreshKey}
             onSoftDelete={handleSoftDelete}
             onRestore={handleRestore}
             onPermanentDelete={handlePermanentDelete}
           />
-        )}
-      </section>
-    </div>
+        </section>
+      </div>
+    </AppShell>
   );
 }

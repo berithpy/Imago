@@ -193,4 +193,46 @@ describe("gallery routes", () => {
     expect(body.photo.id).toBe(photoId);
     expect(body.photo.original_name).toBe("target.jpg");
   });
+
+  // ----------------------------------------------------------------
+  // Viewer auth method (surfaced for client-side analytics)
+  // ----------------------------------------------------------------
+
+  it("GET /:slug/photos returns authMethod='public' for a public gallery", async () => {
+    const gallery = await harness.seedGallery({ slug: "public-am", isPublic: true });
+    const res = await harness.request(`/api/galleries/${gallery.slug}/photos`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { authMethod: string };
+    expect(body.authMethod).toBe("public");
+  });
+
+  it("GET /:slug/photos returns authMethod='password' after password login", async () => {
+    const gallery = await harness.seedGallery({ slug: "private-am", isPublic: false, password: "pw1234" });
+    const loginRes = await harness.request(`/api/viewer/gallery/${gallery.slug}/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ password: "pw1234" }),
+    });
+    const cookie = loginRes.headers.get("set-cookie") ?? "";
+    const res = await harness.request(`/api/galleries/${gallery.slug}/photos`, {
+      headers: { cookie },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { authMethod: string };
+    expect(body.authMethod).toBe("password");
+  });
+
+  it("GET /:slug/photos returns authMethod='magic_link' for whitelisted email session", async () => {
+    const gallery = await harness.seedGallery({ slug: "magic-am", isPublic: false, password: "pw1234" });
+    await harness.runSql(
+      "INSERT INTO gallery_allowed_emails (id, gallery_id, email) VALUES (?, ?, ?)",
+      [crypto.randomUUID(), gallery.id, "guest@example.com"]
+    );
+    mockGetSession.mockResolvedValue({ user: { email: "guest@example.com" } } as any);
+
+    const res = await harness.request(`/api/galleries/${gallery.slug}/photos`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { authMethod: string };
+    expect(body.authMethod).toBe("magic_link");
+  });
 });

@@ -45,7 +45,7 @@ Prepare or confirm the following before starting:
 
 | Label | Description |
 |---|---|
-| Admin email | The real admin email stored in the app (must have `is_super_admin = 1`) |
+| Admin email | The real admin email stored in the app (must be a member of the `imago` platform org with role `imago_operator`) |
 | Tenant admin email | An email that is a tenant admin but not super-admin |
 | Non-admin email | A second email that is not any kind of admin account |
 | Whitelisted viewer email | An email added to a private gallery's allow-list |
@@ -415,7 +415,7 @@ Run MT-01 only on fresh environments. Run MT-06 when auth or better-auth configu
 ### MT-15 Super-admin dashboard access control
 
 Preconditions:
-- a super-admin user exists (`is_super_admin = 1`)
+- a super-admin user exists (member of the `imago` platform org with role `imago_operator`)
 - a separate tenant-admin user exists (no super-admin flag)
 
 Steps:

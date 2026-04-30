@@ -19,10 +19,28 @@ describe("tenant middleware + scoped routes", () => {
 
   beforeEach(async () => {
     await harness.resetDb();
+    // Seed the session user as an Imago operator so the requireTenantMember
+    // guard on /api/t/:slug/admin/* lets every test pass through. Tests
+    // that need to assert membership/role behavior should reset and seed
+    // their own user.
+    await harness.seedUser({ email: "admin@example.com", isSuperAdmin: true });
   });
 
   afterAll(async () => {
     await harness.dispose();
+  });
+
+  it("GET /api/t/:tenantSlug returns tenant metadata", async () => {
+    await harness.seedTenant("acme", "Acme Studio");
+
+    const res = await harness.request("/api/t/acme");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      tenant: {
+        slug: "acme",
+        name: "Acme Studio",
+      },
+    });
   });
 
   it("GET /api/t/:tenantSlug/galleries returns 404 for unknown tenant", async () => {
@@ -124,5 +142,75 @@ describe("tenant middleware + scoped routes", () => {
 
     const payload = (await res.json()) as { photo: { r2_key: string } };
     expect(payload.photo.r2_key.startsWith(`${tenant.id}/galleries/${gallery.id}/`)).toBe(true);
+  });
+
+  describe("requireTenantMember guard on /api/t/:slug/admin/*", () => {
+    it("returns 401 when no session", async () => {
+      // Wipe the seeded super-admin so resolveActorContext finds no user.
+      await harness.runSql("DELETE FROM member WHERE userId IN (SELECT id FROM user WHERE lower(email) = ?)", ["admin@example.com"]);
+      await harness.runSql("DELETE FROM user WHERE lower(email) = ?", ["admin@example.com"]);
+      await harness.seedTenant("acme");
+
+      const res = await harness.request("/api/t/acme/admin/galleries");
+      expect(res.status).toBe(401);
+    });
+
+    it("returns 403 for an authenticated user with no membership in the tenant", async () => {
+      // Replace the seeded super-admin with a plain user (no memberships).
+      await harness.runSql("DELETE FROM member WHERE userId IN (SELECT id FROM user WHERE lower(email) = ?)", ["admin@example.com"]);
+      await harness.runSql("DELETE FROM user WHERE lower(email) = ?", ["admin@example.com"]);
+      await harness.seedUser({ email: "admin@example.com" });
+      await harness.seedTenant("acme");
+
+      const res = await harness.request("/api/t/acme/admin/galleries");
+      expect(res.status).toBe(403);
+    });
+
+    it("allows a tenant_operator member of the tenant", async () => {
+      await harness.runSql("DELETE FROM member WHERE userId IN (SELECT id FROM user WHERE lower(email) = ?)", ["admin@example.com"]);
+      await harness.runSql("DELETE FROM user WHERE lower(email) = ?", ["admin@example.com"]);
+      const user = await harness.seedUser({ email: "admin@example.com" });
+      const tenant = await harness.seedTenant("acme");
+      const orgId = crypto.randomUUID();
+      await harness.runSql(
+        "INSERT INTO organization (id, name, slug, createdAt) VALUES (?, ?, ?, unixepoch())",
+        [orgId, "Acme Org", "acme-org"]
+      );
+      await harness.runSql(
+        "UPDATE tenants SET organization_id = ? WHERE id = ?",
+        [orgId, tenant.id]
+      );
+      await harness.runSql(
+        "INSERT INTO member (id, userId, organizationId, role, createdAt) VALUES (?, ?, ?, 'tenant_operator', unixepoch())",
+        [crypto.randomUUID(), user.id, orgId]
+      );
+
+      const res = await harness.request("/api/t/acme/admin/galleries");
+      expect(res.status).toBe(200);
+    });
+
+    it("denies a member of a different tenant", async () => {
+      await harness.runSql("DELETE FROM member WHERE userId IN (SELECT id FROM user WHERE lower(email) = ?)", ["admin@example.com"]);
+      await harness.runSql("DELETE FROM user WHERE lower(email) = ?", ["admin@example.com"]);
+      const user = await harness.seedUser({ email: "admin@example.com" });
+      const acme = await harness.seedTenant("acme");
+      await harness.seedTenant("other");
+      const orgId = crypto.randomUUID();
+      await harness.runSql(
+        "INSERT INTO organization (id, name, slug, createdAt) VALUES (?, ?, ?, unixepoch())",
+        [orgId, "Acme Org", "acme-org"]
+      );
+      await harness.runSql(
+        "UPDATE tenants SET organization_id = ? WHERE id = ?",
+        [orgId, acme.id]
+      );
+      await harness.runSql(
+        "INSERT INTO member (id, userId, organizationId, role, createdAt) VALUES (?, ?, ?, 'tenant_operator', unixepoch())",
+        [crypto.randomUUID(), user.id, orgId]
+      );
+
+      const res = await harness.request("/api/t/other/admin/galleries");
+      expect(res.status).toBe(403);
+    });
   });
 });

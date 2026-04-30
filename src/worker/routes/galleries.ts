@@ -156,5 +156,12 @@ galleryRoutes.get("/:slug/photos", requireViewer as any, async (c) => {
       ? String(offset + results.length)
       : null;
 
-  return c.json({ photos: results, nextCursor, total: countRow?.total ?? 0 });
+  // `authMethod` is surfaced for client-side analytics (e.g. Google Analytics
+  // custom dimension). Set by `requireViewer`; one of public | password |
+  // magic_link | admin_bypass.
+  const authMethod = (c.get as (k: string) => unknown)("viewerAuthMethod") as
+    | string
+    | undefined;
+
+  return c.json({ photos: results, nextCursor, total: countRow?.total ?? 0, authMethod });
 });

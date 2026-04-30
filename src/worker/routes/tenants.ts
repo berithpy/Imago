@@ -1,7 +1,8 @@
 import { Hono, type Context } from "hono";
 import { Bindings } from "../index";
-import { auth } from "../lib/auth";
 import { RESERVED_TENANT_SLUGS } from "../../shared/reservedSlugs";
+import { resolveActorContext, canCreateSubTenant, ROLES } from "../lib/roles";
+import { logAdminEvent } from "../lib/adminLog";
 
 export const tenantsRoutes = new Hono<{ Bindings: Bindings }>();
 
@@ -10,25 +11,14 @@ const SLUG_RE = /^[a-z0-9-]+$/;
 type TenantContext = Context<{ Bindings: Bindings }>;
 
 // ------------------------------------------------------------------
-// Shared super-admin guard helper
+// Shared platform-operator guard helper.
+// Platform-operator status now comes from membership in the `imago` org
+// (see resolveActorContext) — the legacy `is_super_admin` flag is gone.
 // ------------------------------------------------------------------
 async function requireSuperAdmin(c: TenantContext) {
-  const origin = new URL(c.req.raw.url).origin;
-  const session = await auth(c.env, origin).api.getSession({
-    headers: c.req.raw.headers,
-  });
-  if (!session) return c.json({ error: "Unauthorized" }, 401);
-
-  const email = session.user.email;
-  if (email == null) return c.json({ error: "Unauthorized" }, 401);
-
-  const user = await c.env.DB.prepare(
-    "SELECT is_super_admin FROM user WHERE email = ?"
-  )
-    .bind(email)
-    .first<{ is_super_admin: number }>();
-
-  if (!user || !user.is_super_admin) return c.json({ error: "Forbidden" }, 403);
+  const actor = await resolveActorContext(c);
+  if (!actor.user) return c.json({ error: "Unauthorized" }, 401);
+  if (!actor.superAdmin) return c.json({ error: "Forbidden" }, 403);
   return null; // ok
 }
 
@@ -53,6 +43,92 @@ tenantsRoutes.get("/check-slug", async (c) => {
 });
 
 // ------------------------------------------------------------------
+// POST /sub-tenants — create a sub-tenant under an existing parent.
+// Authorized for super-admin OR the tenant_operator of the parent.
+// Enforces depth ≤ 1 (parent must itself have no parent).
+// Mounted before the super-admin guard to allow non-super-admin owners.
+// ------------------------------------------------------------------
+tenantsRoutes.post("/sub-tenants", async (c) => {
+  const actor = await resolveActorContext(c);
+  if (!actor.user) return c.json({ error: "Unauthorized" }, 401);
+
+  const { parentId, slug, name } = await c.req
+    .json<{ parentId?: string; slug?: string; name?: string }>()
+    .catch(() => ({} as { parentId?: string; slug?: string; name?: string }));
+
+  if (!parentId || !slug || !name) {
+    return c.json({ error: "parentId, slug, and name are required" }, 400);
+  }
+  if (!SLUG_RE.test(slug)) {
+    return c.json({ error: "Slug must only contain lowercase letters, numbers, and dashes" }, 400);
+  }
+  if (RESERVED_TENANT_SLUGS.includes(slug)) {
+    return c.json({ error: "Slug is reserved" }, 400);
+  }
+
+  const parent = await c.env.DB
+    .prepare("SELECT id, slug, parent_id FROM tenants WHERE id = ? AND deleted_at IS NULL")
+    .bind(parentId)
+    .first<{ id: string; slug: string; parent_id: string | null }>();
+  if (!parent) return c.json({ error: "Parent tenant not found" }, 404);
+
+  if (!canCreateSubTenant(actor, { id: parent.id, parentId: parent.parent_id })) {
+    if (parent.parent_id) {
+      return c.json({ error: "Sub-tenants cannot have sub-tenants" }, 400);
+    }
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  const slugTaken = await c.env.DB
+    .prepare("SELECT id FROM tenants WHERE slug = ?")
+    .bind(slug)
+    .first();
+  if (slugTaken) return c.json({ error: "Slug already in use" }, 409);
+
+  const tenantId = crypto.randomUUID();
+  const orgId = crypto.randomUUID();
+  await c.env.DB.batch([
+    c.env.DB.prepare(
+      "INSERT INTO organization (id, name, slug, createdAt) VALUES (?, ?, ?, unixepoch())"
+    ).bind(orgId, name, slug),
+    c.env.DB.prepare(
+      "INSERT INTO tenants (id, slug, name, organization_id, parent_id, created_at) VALUES (?, ?, ?, ?, ?, unixepoch())"
+    ).bind(tenantId, slug, name, orgId, parent.id),
+  ]);
+
+  // If the creator is a non-super-admin tenant_operator of the parent,
+  // automatically grant them sub_tenant_operator membership on the new
+  // sub-tenant so they retain access without a separate invite step.
+  if (!actor.superAdmin) {
+    const memberId = crypto.randomUUID();
+    await c.env.DB.prepare(
+      "INSERT INTO member (id, userId, organizationId, role, createdAt) VALUES (?, ?, ?, ?, unixepoch())"
+    ).bind(memberId, actor.user.id, orgId, ROLES.SUB_TENANT_OPERATOR).run();
+  }
+
+  await logAdminEvent(c.env.DB, "SUB_TENANT_CREATED", {
+    detail: slug,
+    actor,
+    tenantId,
+    tenantParentId: parent.id,
+  });
+
+  return c.json(
+    {
+      tenant: {
+        id: tenantId,
+        slug,
+        name,
+        organization_id: orgId,
+        parent_id: parent.id,
+        deleted_at: null,
+      },
+    },
+    201
+  );
+});
+
+// ------------------------------------------------------------------
 // Auth guard for all remaining routes
 // ------------------------------------------------------------------
 tenantsRoutes.use("/*", async (c, next) => {
@@ -66,7 +142,7 @@ tenantsRoutes.use("/*", async (c, next) => {
 // ------------------------------------------------------------------
 tenantsRoutes.get("/", async (c) => {
   const { results } = await c.env.DB.prepare(
-    "SELECT id, slug, name, organization_id, deleted_at, created_at FROM tenants ORDER BY created_at DESC"
+    "SELECT id, slug, name, organization_id, parent_id, deleted_at, created_at FROM tenants ORDER BY created_at DESC"
   ).all();
   return c.json({ tenants: results });
 });

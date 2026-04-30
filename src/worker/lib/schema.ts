@@ -13,7 +13,6 @@ export const user = sqliteTable("user", {
   image: text("image"),
   createdAt: integer("createdAt", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
   updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
-  isSuperAdmin: integer("is_super_admin", { mode: "boolean" }).notNull().default(false),
 });
 
 export const session = sqliteTable("session", {
@@ -95,10 +94,16 @@ export const tenants = sqliteTable("tenants", {
   slug: text("slug").notNull().unique(),
   name: text("name").notNull(),
   organizationId: text("organization_id"),
+  // Sub-tenancy: nullable FK to a parent tenant. One level deep is enforced
+  // in the service layer (no DB CHECK) — see canCreateSubTenant in roles.ts.
+  parentId: text("parent_id"),
+  // JSON blob for sub-tenant branding overrides. Null = inherit parent.
+  brandingOverrides: text("branding_overrides"),
   deletedAt: integer("deleted_at"),
   createdAt: integer("created_at").notNull().default(sql`(unixepoch())`),
 }, (t) => [
   uniqueIndex("idx_tenants_slug").on(t.slug),
+  index("idx_tenants_parent").on(t.parentId),
 ]);
 
 export const galleries = sqliteTable("galleries", {
@@ -156,9 +161,20 @@ export const adminLog = sqliteTable("admin_log", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   event: text("event").notNull(),
   detail: text("detail"),
+  // 'system' | 'imago_operator' | 'tenant_operator' | 'sub_tenant_operator'
+  // | 'tenant_collaborator' | 'parent_operator'
+  actorType: text("actor_type").notNull().default("system"),
+  actorUserId: text("actor_user_id"),
+  // Tenant the action affected (nullable for platform-level events)
+  tenantId: text("tenant_id"),
+  // For parent-operator / imago-operator writes into a sub-tenant: the
+  // sub-tenant id so the affected tenant can see it in its own log view.
+  visibleToTenantId: text("visible_to_tenant_id"),
   createdAt: integer("created_at").notNull().default(sql`(unixepoch())`),
 }, (t) => [
   index("idx_admin_log_created").on(t.createdAt),
+  index("idx_admin_log_tenant").on(t.tenantId),
+  index("idx_admin_log_visible").on(t.visibleToTenantId),
 ]);
 
 export const appConfig = sqliteTable("app_config", {

@@ -322,4 +322,155 @@ describe("tenants routes", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ valid: true, available: false, reserved: true });
   });
+
+  // ------------------------------------------------------------------
+  // Sub-tenants — POST /api/operator/tenants/sub-tenants
+  // ------------------------------------------------------------------
+
+  async function seedTenantWithOrg(slug: string, parentId: string | null = null) {
+    const tenantId = crypto.randomUUID();
+    const orgId = crypto.randomUUID();
+    await harness.runSql(
+      "INSERT INTO organization (id, name, slug, createdAt) VALUES (?, ?, ?, unixepoch())",
+      [orgId, slug, slug]
+    );
+    await harness.runSql(
+      "INSERT INTO tenants (id, slug, name, organization_id, parent_id, created_at) VALUES (?, ?, ?, ?, ?, unixepoch())",
+      [tenantId, slug, slug, orgId, parentId]
+    );
+    return { tenantId, orgId };
+  }
+
+  it("POST /sub-tenants returns 401 when no session", async () => {
+    mockGetSession.mockResolvedValueOnce(null);
+    const parent = await seedTenantWithOrg("p1");
+    const res = await harness.request("/api/operator/tenants/sub-tenants", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ parentId: parent.tenantId, slug: "p1-sub", name: "Sub" }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("POST /sub-tenants creates a child for super-admin", async () => {
+    await harness.seedUser({ email: "superadmin@example.com", isSuperAdmin: true });
+    const parent = await seedTenantWithOrg("acme");
+    const res = await harness.request("/api/operator/tenants/sub-tenants", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ parentId: parent.tenantId, slug: "acme-weddings", name: "Weddings" }),
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { tenant: { slug: string; parent_id: string } };
+    expect(body.tenant.slug).toBe("acme-weddings");
+    expect(body.tenant.parent_id).toBe(parent.tenantId);
+  });
+
+  it("POST /sub-tenants creates a child for the parent's tenant_operator", async () => {
+    const owner = await harness.seedUser({ email: "owner@example.com" });
+    const parent = await seedTenantWithOrg("studio");
+    await harness.runSql(
+      "INSERT INTO member (id, organizationId, userId, role, createdAt) VALUES (?, ?, ?, 'tenant_operator', unixepoch())",
+      [crypto.randomUUID(), parent.orgId, owner.id]
+    );
+    mockGetSession.mockResolvedValue({ user: { email: owner.email, id: owner.id } });
+
+    const res = await harness.request("/api/operator/tenants/sub-tenants", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ parentId: parent.tenantId, slug: "studio-events", name: "Events" }),
+    });
+    expect(res.status).toBe(201);
+
+    // Owner should automatically become sub_tenant_operator on the new sub
+    const sub = await harness.env.DB.prepare(
+      "SELECT id, organization_id FROM tenants WHERE slug = ?"
+    ).bind("studio-events").first<{ id: string; organization_id: string }>();
+    const m = await harness.env.DB.prepare(
+      "SELECT role FROM member WHERE userId = ? AND organizationId = ?"
+    ).bind(owner.id, sub!.organization_id).first<{ role: string }>();
+    expect(m?.role).toBe("sub_tenant_operator");
+  });
+
+  it("POST /sub-tenants returns 403 for sub-tenant operator (depth-1 enforcement: cannot create grandchild)", async () => {
+    const lead = await harness.seedUser({ email: "lead@example.com" });
+    const parent = await seedTenantWithOrg("topp");
+    const sub = await seedTenantWithOrg("topp-sub", parent.tenantId);
+    await harness.runSql(
+      "INSERT INTO member (id, organizationId, userId, role, createdAt) VALUES (?, ?, ?, 'sub_tenant_operator', unixepoch())",
+      [crypto.randomUUID(), sub.orgId, lead.id]
+    );
+    mockGetSession.mockResolvedValue({ user: { email: lead.email, id: lead.id } });
+
+    const res = await harness.request("/api/operator/tenants/sub-tenants", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ parentId: sub.tenantId, slug: "topp-sub-deep", name: "Too Deep" }),
+    });
+    // Depth check fires before the role check, so this returns 400 even
+    // when the actor would otherwise have permission.
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: expect.stringContaining("sub-tenants") });
+  });
+
+  it("POST /sub-tenants returns 403 for collaborator on parent", async () => {
+    const collab = await harness.seedUser({ email: "collab@example.com" });
+    const parent = await seedTenantWithOrg("collab-parent");
+    await harness.runSql(
+      "INSERT INTO member (id, organizationId, userId, role, createdAt) VALUES (?, ?, ?, 'tenant_collaborator', unixepoch())",
+      [crypto.randomUUID(), parent.orgId, collab.id]
+    );
+    mockGetSession.mockResolvedValue({ user: { email: collab.email, id: collab.id } });
+
+    const res = await harness.request("/api/operator/tenants/sub-tenants", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ parentId: parent.tenantId, slug: "should-not", name: "Nope" }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("POST /sub-tenants returns 404 for missing parent", async () => {
+    await harness.seedUser({ email: "superadmin@example.com", isSuperAdmin: true });
+    const res = await harness.request("/api/operator/tenants/sub-tenants", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ parentId: crypto.randomUUID(), slug: "ghost-sub", name: "Ghost" }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("POST /sub-tenants writes admin_log row with parent_operator actor_type and visibility to sub", async () => {
+    const owner = await harness.seedUser({ email: "owner2@example.com" });
+    const parent = await seedTenantWithOrg("logme");
+    await harness.runSql(
+      "INSERT INTO member (id, organizationId, userId, role, createdAt) VALUES (?, ?, ?, 'tenant_operator', unixepoch())",
+      [crypto.randomUUID(), parent.orgId, owner.id]
+    );
+    mockGetSession.mockResolvedValue({ user: { email: owner.email, id: owner.id } });
+
+    await harness.request("/api/operator/tenants/sub-tenants", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ parentId: parent.tenantId, slug: "logme-sub", name: "Sub" }),
+    });
+
+    const newSub = await harness.env.DB.prepare(
+      "SELECT id FROM tenants WHERE slug = ?"
+    ).bind("logme-sub").first<{ id: string }>();
+
+    const log = await harness.env.DB.prepare(
+      "SELECT actor_type, actor_user_id, tenant_id, visible_to_tenant_id FROM admin_log WHERE event = 'SUB_TENANT_CREATED'"
+    ).first<{
+      actor_type: string;
+      actor_user_id: string;
+      tenant_id: string;
+      visible_to_tenant_id: string;
+    }>();
+    expect(log).not.toBeNull();
+    expect(log?.actor_type).toBe("parent_operator");
+    expect(log?.actor_user_id).toBe(owner.id);
+    expect(log?.tenant_id).toBe(newSub?.id);
+    expect(log?.visible_to_tenant_id).toBe(newSub?.id);
+  });
 });

@@ -61,13 +61,13 @@ User fills name + email + password
 **Trigger:** `GET /login`  
 **Pages:** `UniversalLogin.tsx` → `LoginCard` (request); `LoginResolve.tsx` (post-callback routing)
 
-A single entry point for both super-admins (`user.is_super_admin = 1`) and tenant admins (`member` row in any non-deleted tenant's organization). Magic-link only — no password tab.
+A single entry point for both Imago operators (member of the `imago` platform org with role `imago_operator`) and tenant admins (`member` row in any non-deleted tenant's organization). Magic-link only — no password tab.
 
 ```
 User enters email
   → POST /api/login/magic-link
       ├─ Look up user by email
-      ├─ If is_super_admin OR has any non-deleted tenant membership
+      ├─ If member of the `imago` org OR has any non-deleted tenant membership
       │    └─ auth().api.signInMagicLink({ email, callbackURL: "/login/resolve" })
       └─ Always returns { ok: true }  (no enumeration)
 

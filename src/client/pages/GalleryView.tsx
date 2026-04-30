@@ -9,6 +9,9 @@ import { Lightbox } from "@/client/components/Lightbox";
 import { exportGallery } from "@/client/lib/exportGallery";
 import { useTenant } from "@/client/lib/tenantContext";
 import { shareUrl } from "@/client/lib/share";
+import { AppShell } from "@/client/components/shell/AppShell";
+import { Button } from "@/client/components/Button";
+import { track, setUserProperties } from "@/client/lib/analytics";
 
 type Photo = {
   id: string;
@@ -24,6 +27,7 @@ type FetchPhotosResult = {
   photos: Photo[];
   nextCursor: string | null;
   total: number;
+  authMethod?: string;
 };
 
 function PhotoCard({ data: photo, width, index }: { data: Photo; width: number; index: number }) {
@@ -105,6 +109,7 @@ export function GalleryView() {
 
   const loadingMoreRef = useRef(false);
   const observerRef = useRef<IntersectionObserver | null>(null);
+  const analyticsFiredKeyRef = useRef<string | null>(null);
   const getPhotoIdFromPathRef = useRef(getPhotoIdFromPath);
   const initialRoutePhotoIdRef = useRef(routePhotoId);
   const initialDeepLinkScrollCompleteRef = useRef(!routePhotoId);
@@ -130,8 +135,8 @@ export function GalleryView() {
       if (res.status === 401 || res.status === 403) {
         return { needsAuth: true, photos: [], nextCursor: null, total: 0 };
       }
-      const data = await res.json() as { photos: Photo[]; nextCursor: string | null; total: number };
-      return { needsAuth: false, photos: data.photos ?? [], nextCursor: data.nextCursor ?? null, total: data.total ?? 0 };
+      const data = await res.json() as { photos: Photo[]; nextCursor: string | null; total: number; authMethod?: string };
+      return { needsAuth: false, photos: data.photos ?? [], nextCursor: data.nextCursor ?? null, total: data.total ?? 0, authMethod: data.authMethod };
     },
     [gallerySlug, apiBase]
   );
@@ -182,6 +187,14 @@ export function GalleryView() {
         setPhotos(data.photos);
         setNextCursor(data.nextCursor);
         setTotal(data.total);
+
+        const authMethod = data.authMethod ?? "unknown";
+        const firedKey = `${gallerySlug}:${authMethod}`;
+        if (analyticsFiredKeyRef.current !== firedKey) {
+          analyticsFiredKeyRef.current = firedKey;
+          setUserProperties({ viewer_auth_method: authMethod });
+          track("gallery_view", { gallery_slug: gallerySlug, auth_method: authMethod });
+        }
       } catch {
         setError("Failed to load photos");
       } finally {
@@ -317,107 +330,113 @@ export function GalleryView() {
           "Share";
 
   return (
-    <div className="min-h-screen p-6">
-      {expired && (
-        <div className="max-w-[480px] mx-auto mt-20 text-center">
-          <ErrorMessage message="This gallery has expired and is no longer available." />
-          <a href="/" className="text-sm text-neutral-500">Back to galleries</a>
-        </div>
-      )}
+    <AppShell gallerySlug={gallerySlug}>
+      <div className="min-h-screen p-6">
+        {expired && (
+          <div className="max-w-[480px] mx-auto mt-20 text-center">
+            <ErrorMessage message="This gallery has expired and is no longer available." />
+            <a href="/" className="text-sm text-neutral-500">Back to galleries</a>
+          </div>
+        )}
 
-      {!expired && (
-        <>
-          {bannerKey && (
-            <div className="w-full max-h-[340px] overflow-hidden">
-              <img
-                src={`/api/images/${bannerKey}?variant=banner`}
-                alt="Gallery banner"
-                className="w-full h-[340px] object-cover block"
-              />
-            </div>
-          )}
-
-          <div className="max-w-[1200px] mx-auto my-8 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
-            <div className="min-w-0">
-              <h1 className="text-[1.75rem] font-bold leading-tight">
-                {galleryName || gallerySlug}
-              </h1>
-              {eventDate && (
-                <div className="text-[0.85rem] text-neutral-500 mt-1">
-                  {new Date(eventDate * 1000).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}
-                </div>
-              )}
-            </div>
-            {photos.length > 0 && (
-              <div className="flex gap-2 items-center shrink-0">
-                <button
-                  onClick={() => setShowInfo((v) => !v)}
-                  title={showInfo ? "Hide photo info overlays" : "Show photo info overlays"}
-                  className={`px-3 py-2 border border-neutral-800 rounded-lg text-[0.85rem] font-mono whitespace-nowrap transition-colors cursor-pointer ${showInfo ? "bg-neutral-900 text-neutral-100" : "bg-transparent text-neutral-500"
-                    }`}
-                >
-                  {showInfo ? "Info on" : "Info off"}
-                </button>
-                <button
-                  onClick={handleShare}
-                  title="Share gallery URL"
-                  className={`px-3 py-2 border rounded-lg text-[0.85rem] whitespace-nowrap transition-colors cursor-pointer ${shareState === "shared" || shareState === "copied"
-                    ? "bg-amber-400 border-amber-400 text-neutral-950 font-semibold"
-                    : "bg-transparent border-neutral-800 text-neutral-100"
-                    }`}
-                >
-                  {shareLabel}
-                </button>
-                <button
-                  onClick={handleExport}
-                  disabled={exporting}
-                  className={`px-4 py-2 border rounded-lg text-[0.85rem] whitespace-nowrap transition-colors ${exporting ? "cursor-not-allowed text-neutral-500" : "cursor-pointer text-neutral-100"
-                    } ${exportDone
-                      ? "bg-amber-400 border-amber-400 text-neutral-950 font-semibold"
-                      : "bg-transparent border-neutral-800"
-                    }`}
-                >
-                  {exportDone ? "Saved!" : exporting ? exportProgress : "Download all"}
-                </button>
+        {!expired && (
+          <>
+            {bannerKey && (
+              <div className="w-full max-h-[340px] overflow-hidden">
+                <img
+                  src={`/api/images/${bannerKey}?variant=banner`}
+                  alt="Gallery banner"
+                  className="w-full h-[340px] object-cover block"
+                />
               </div>
             )}
-          </div>
 
-          {loading && <SpinnerOverlay />}
-          {error && <ErrorMessage message={error} onRetry={() => { setError(null); setRetryCount((c) => c + 1); }} />}
-
-          {!loading && (
-            <div className="max-w-[1200px] mx-auto">
-              <MasonryGrid
-                photos={photos}
-                total={total}
-                onPhotoClick={openLightbox}
-                showInfo={showInfo}
-                scrollToIndex={pendingScrollToIndex}
-              />
-              <div ref={setSentinel} className="h-px" />
-              {loadingMore && (
-                <div className="flex justify-center py-4">
-                  <Spinner />
+            <div className="max-w-[1200px] mx-auto my-8 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+              <div className="min-w-0">
+                <h1 className="text-[1.75rem] font-bold leading-tight">
+                  {galleryName || gallerySlug}
+                </h1>
+                {eventDate && (
+                  <div className="text-[0.85rem] text-neutral-500 mt-1">
+                    {new Date(eventDate * 1000).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}
+                  </div>
+                )}
+              </div>
+              {photos.length > 0 && (
+                <div className="flex gap-2 items-center shrink-0">
+                  <button
+                    onClick={() => setShowInfo((v) => !v)}
+                    title={showInfo ? "Hide photo info overlays" : "Show photo info overlays"}
+                    className={`px-3 py-2 border border-neutral-800 rounded-lg text-[0.85rem] font-mono whitespace-nowrap transition-colors cursor-pointer ${showInfo ? "bg-neutral-900 text-neutral-100" : "bg-transparent text-neutral-500"
+                      }`}
+                  >
+                    {showInfo ? "Info on" : "Info off"}
+                  </button>
+                  <Button
+                    onClick={handleShare}
+                    title="Share gallery URL"
+                    variant="secondary"
+                    analyticsId="gallery_share"
+                    className={`px-3 py-2 border rounded-lg text-[0.85rem] whitespace-nowrap ${shareState === "shared" || shareState === "copied"
+                      ? "bg-amber-400 border-amber-400 text-neutral-950 font-semibold"
+                      : "bg-transparent border-neutral-800 text-neutral-100"
+                      }`}
+                  >
+                    {shareLabel}
+                  </Button>
+                  <Button
+                    onClick={handleExport}
+                    disabled={exporting}
+                    variant="secondary"
+                    analyticsId="gallery_download"
+                    className={`px-4 py-2 border rounded-lg text-[0.85rem] whitespace-nowrap ${exporting ? "text-neutral-500" : "text-neutral-100"
+                      } ${exportDone
+                        ? "bg-amber-400 border-amber-400 text-neutral-950 font-semibold"
+                        : "bg-transparent border-neutral-800"
+                      }`}
+                  >
+                    {exportDone ? "Saved!" : exporting ? exportProgress : "Download all"}
+                  </Button>
                 </div>
               )}
             </div>
-          )}
 
-          {!loading && photos.length === 0 && !error && (
-            <EmptyState message="No photos in this gallery yet." />
-          )}
+            {loading && <SpinnerOverlay />}
+            {error && <ErrorMessage message={error} onRetry={() => { setError(null); setRetryCount((c) => c + 1); }} />}
 
-          {lightbox && (
-            <Lightbox
-              r2Key={lightbox.r2_key}
-              alt={lightbox.original_name}
-              filename={lightbox.original_name}
-              onClose={closeLightbox}
-            />
-          )}
-        </>
-      )}
-    </div>
+            {!loading && (
+              <div className="max-w-[1200px] mx-auto">
+                <MasonryGrid
+                  photos={photos}
+                  total={total}
+                  onPhotoClick={openLightbox}
+                  showInfo={showInfo}
+                  scrollToIndex={pendingScrollToIndex}
+                />
+                <div ref={setSentinel} className="h-px" />
+                {loadingMore && (
+                  <div className="flex justify-center py-4">
+                    <Spinner />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!loading && photos.length === 0 && !error && (
+              <EmptyState message="No photos in this gallery yet." />
+            )}
+
+            {lightbox && (
+              <Lightbox
+                r2Key={lightbox.r2_key}
+                alt={lightbox.original_name}
+                filename={lightbox.original_name}
+                onClose={closeLightbox}
+              />
+            )}
+          </>
+        )}
+      </div>
+    </AppShell>
   );
 }

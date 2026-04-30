@@ -5,10 +5,13 @@ import { Bindings } from "../index";
 import { pbkdf2Hash } from "../lib/crypto";
 import { auth } from "../lib/auth";
 import { logAdminEvent } from "../lib/adminLog";
+import { resolveActorContext, IMAGO_ORG_ID, IMAGO_ORG_SLUG, ROLES, canManageMembers } from "../lib/roles";
 import { sendEmail, invitedUserHtml, newPhotosHtml } from "../lib/email";
 import { tenantClause } from "../lib/db";
 import type { TenantVariables } from "../middleware/tenant";
 import { RESERVED_GALLERY_SUBPATHS } from "../../shared/reservedSlugs";
+import { membersRoutes } from "./members";
+import { brandingRoutes } from "./branding";
 
 export const adminRoutes = new Hono<{ Bindings: Bindings; Variables: TenantVariables }>();
 
@@ -24,6 +27,12 @@ adminRoutes.use("/*", async (c, next) => {
   if (!session) return c.json({ error: "Unauthorized" }, 401);
   await next();
 });
+
+// Mount tenant member-management endpoints — they piggy-back on the
+// session guard above and on requireTenantMember on the tenant-scoped
+// admin mount in `index.ts`.
+adminRoutes.route("/members", membersRoutes);
+adminRoutes.route("/branding", brandingRoutes);
 
 // ------------------------------------------------------------------
 // One-time admin setup — creates the admin user in better-auth
@@ -48,10 +57,22 @@ adminRoutes.post("/setup", async (c) => {
     body: { email, password, name },
   });
 
-  // Promote the first user to super-admin
-  await c.env.DB.prepare(
-    "UPDATE user SET is_super_admin = 1 WHERE email = ?"
-  ).bind(email).run();
+  // Promote the first user to platform operator: ensure the platform org
+  // exists, then add the new user as an `imago_operator` member. Replaces
+  // the legacy `UPDATE user SET is_super_admin = 1`.
+  const newUser = await c.env.DB.prepare(
+    "SELECT id FROM user WHERE lower(email) = lower(?)"
+  ).bind(email).first<{ id: string }>();
+  if (newUser) {
+    await c.env.DB.batch([
+      c.env.DB.prepare(
+        "INSERT OR IGNORE INTO organization (id, name, slug, createdAt) VALUES (?, ?, ?, unixepoch())"
+      ).bind(IMAGO_ORG_ID, "Imago Platform", IMAGO_ORG_SLUG),
+      c.env.DB.prepare(
+        "INSERT INTO member (id, userId, organizationId, role, createdAt) VALUES (?, ?, ?, ?, unixepoch())"
+      ).bind(crypto.randomUUID(), newUser.id, IMAGO_ORG_ID, ROLES.IMAGO_OPERATOR),
+    ]);
+  }
 
   // Store recovery email in app_config (defaults to admin email)
   const resolvedRecovery = recoveryEmail?.trim() || email;
@@ -59,7 +80,7 @@ adminRoutes.post("/setup", async (c) => {
     "INSERT OR REPLACE INTO app_config (key, value) VALUES ('recovery_email', ?)"
   ).bind(resolvedRecovery).run();
 
-  await logAdminEvent(c.env.DB, "ADMIN_SETUP");
+  await logAdminEvent(c.env.DB, "ADMIN_SETUP", { actorTypeOverride: "system" });
 
   return c.json({ ok: true, user: result });
 });
@@ -166,7 +187,14 @@ adminRoutes.post("/galleries", async (c) => {
     .bind(id, tenantId ?? null, name, slug, passwordHash, description ?? null, is_public ? 1 : 0, event_date ?? null, expires_at ?? null, now)
     .run();
 
-  await logAdminEvent(c.env.DB, "GALLERY_CREATED", slug);
+  {
+    const actor = await resolveActorContext(c);
+    await logAdminEvent(c.env.DB, "GALLERY_CREATED", {
+      detail: slug,
+      actor,
+      tenantId: tenantId ?? null,
+    });
+  }
 
   return c.json({ ok: true, gallery: { id, name, slug, description, is_public: is_public ? 1 : 0, event_date: event_date ?? null, expires_at: expires_at ?? null, created_at: now } }, 201);
 });
@@ -192,10 +220,27 @@ adminRoutes.post("/galleries/:id/restore", async (c) => {
 });
 
 // Permanently delete (removes R2 objects + D1 rows)
+// Operator-level only: collaborators can soft-delete (recoverable) but not
+// purge. On the global mount (no tenantId in context) we still require
+// superAdmin since there's no tenant to scope membership against.
 adminRoutes.delete("/galleries/:id/permanent", async (c) => {
   const { id } = c.req.param();
 
-  const [tSql, tBindings] = tenantClause(c.get("tenantId"));
+  const tenantId = c.get("tenantId") as string | undefined;
+  const actor = await resolveActorContext(c);
+  if (!actor.user) return c.json({ error: "Unauthorized" }, 401);
+  if (tenantId) {
+    const tenantRow = await c.env.DB.prepare(
+      "SELECT parent_id AS parentId FROM tenants WHERE id = ?"
+    ).bind(tenantId).first<{ parentId: string | null }>();
+    if (!canManageMembers(actor, tenantId, tenantRow?.parentId ?? null)) {
+      return c.json({ error: "Forbidden" }, 403);
+    }
+  } else if (!actor.superAdmin) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  const [tSql, tBindings] = tenantClause(tenantId);
   // Get all photos to remove from R2
   const { results: photos } = await c.env.DB.prepare(
     "SELECT r2_key FROM photos WHERE gallery_id = ?"
@@ -482,7 +527,13 @@ adminRoutes.post("/galleries/:id/viewer-bypass", async (c) => {
 
   const exp = Math.floor(Date.now() / 1000) + 60 * 60 * 24;
   const token = await sign(
-    { sub: "viewer", galleryId: gallery.id, tenantId: gallery.tenant_id, exp },
+    {
+      sub: "viewer",
+      galleryId: gallery.id,
+      tenantId: gallery.tenant_id,
+      auth_method: "admin_bypass",
+      exp,
+    },
     c.env.JWT_SECRET
   );
 
@@ -498,9 +549,12 @@ adminRoutes.post("/galleries/:id/viewer-bypass", async (c) => {
 });
 
 // ------------------------------------------------------------------
-// Admin log — read-only audit trail
+// Admin log — read-only audit trail (cross-tenant; superAdmin only)
 // ------------------------------------------------------------------
 adminRoutes.get("/log", async (c) => {
+  const actor = await resolveActorContext(c);
+  if (!actor.user) return c.json({ error: "Unauthorized" }, 401);
+  if (!actor.superAdmin) return c.json({ error: "Forbidden" }, 403);
   const { results } = await c.env.DB.prepare(
     "SELECT id, event, detail, created_at FROM admin_log ORDER BY created_at DESC LIMIT 200"
   ).all<{ id: number; event: string; detail: string | null; created_at: number }>();
@@ -570,19 +624,27 @@ adminRoutes.delete("/galleries/:id/allowed-emails/:email", async (c) => {
 // Admin user management
 // ------------------------------------------------------------------
 adminRoutes.get("/users", async (c) => {
-  // Super-admin only
-  const origin = new URL(c.req.raw.url).origin;
-  const session = await auth(c.env, origin).api.getSession({ headers: c.req.raw.headers });
-  const sessionUser = await c.env.DB.prepare(
-    "SELECT is_super_admin FROM user WHERE email = ?"
-  ).bind(session!.user.email).first<{ is_super_admin: number }>();
-  if (!sessionUser?.is_super_admin) return c.json({ error: "Forbidden" }, 403);
+  // Imago operator only.
+  const actor = await resolveActorContext(c);
+  if (!actor.user) return c.json({ error: "Unauthorized" }, 401);
+  if (!actor.superAdmin) return c.json({ error: "Forbidden" }, 403);
 
   const tenantId = c.req.query("tenantId");
 
+  // `is_super_admin` is now derived from membership in the platform org.
+  // Surface it to the client as a 0/1 column so existing UIs can keep
+  // their current shape without an interim translation layer.
+  const SUPER_ADMIN_EXPR = `(
+    EXISTS (
+      SELECT 1 FROM member im
+      JOIN organization io ON io.id = im.organizationId
+      WHERE im.userId = u.id AND io.slug = '${IMAGO_ORG_SLUG}' AND im.role = '${ROLES.IMAGO_OPERATOR}'
+    )
+  )`;
+
   if (tenantId) {
     const { results } = await c.env.DB.prepare(
-      `SELECT u.id, u.name, u.email, u.is_super_admin, u.createdAt, m.role
+      `SELECT u.id, u.name, u.email, ${SUPER_ADMIN_EXPR} AS is_super_admin, u.createdAt, m.role
        FROM user u
        JOIN member m ON m.userId = u.id
        JOIN organization o ON o.id = m.organizationId
@@ -594,7 +656,7 @@ adminRoutes.get("/users", async (c) => {
   }
 
   const { results } = await c.env.DB.prepare(
-    `SELECT u.id, u.name, u.email, u.is_super_admin, u.createdAt,
+    `SELECT u.id, u.name, u.email, ${SUPER_ADMIN_EXPR} AS is_super_admin, u.createdAt,
             m.role, t.id AS tenant_id, t.name AS tenant_name
      FROM user u
      LEFT JOIN member m ON m.userId = u.id
@@ -606,6 +668,13 @@ adminRoutes.get("/users", async (c) => {
 });
 
 adminRoutes.post("/users/invite", async (c) => {
+  // Legacy endpoint: creates a platform user with no tenant attachment.
+  // Superseded by POST /admin/members/invite. Restricted to superAdmin so
+  // tenant operators can't silently create unattached users.
+  const inviter = await resolveActorContext(c);
+  if (!inviter.user) return c.json({ error: "Unauthorized" }, 401);
+  if (!inviter.superAdmin) return c.json({ error: "Forbidden" }, 403);
+
   const { email, name } = await c.req.json<{ email: string; name: string }>();
 
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -637,7 +706,14 @@ adminRoutes.post("/users/invite", async (c) => {
     console.error("[users/invite] Failed to send magic link:", err);
   }
 
-  await logAdminEvent(c.env.DB, "USER_INVITED", email);
+  {
+    const actor = await resolveActorContext(c);
+    await logAdminEvent(c.env.DB, "USER_INVITED", {
+      detail: email,
+      actor,
+      tenantId: c.get("tenantId") ?? null,
+    });
+  }
 
   return c.json({ ok: true, user: { email, name } });
 });

@@ -20,9 +20,19 @@ let harness: WorkerTestHarness;
 
 async function seedUser(id: string, email: string, isSuperAdmin = false) {
   await harness.runSql(
-    "INSERT INTO user (id, name, email, emailVerified, is_super_admin, createdAt, updatedAt) VALUES (?, ?, ?, 1, ?, unixepoch(), unixepoch())",
-    [id, email, email, isSuperAdmin ? 1 : 0]
+    "INSERT INTO user (id, name, email, emailVerified, createdAt, updatedAt) VALUES (?, ?, ?, 1, unixepoch(), unixepoch())",
+    [id, email, email]
   );
+  if (isSuperAdmin) {
+    await harness.runSql(
+      "INSERT OR IGNORE INTO organization (id, name, slug, createdAt) VALUES ('imago-platform', 'Imago Platform', 'imago', unixepoch())",
+      []
+    );
+    await harness.runSql(
+      "INSERT INTO member (id, userId, organizationId, role, createdAt) VALUES (?, ?, 'imago-platform', 'imago_operator', unixepoch())",
+      [crypto.randomUUID(), id]
+    );
+  }
 }
 
 async function seedTenantOrg(slug: string, name = slug) {
@@ -132,56 +142,6 @@ describe("login routes (universal)", () => {
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({ ok: true });
       expect(mockSignInMagicLink).not.toHaveBeenCalled();
-    });
-  });
-
-  describe("GET /api/login/resolve", () => {
-    it("returns 401 when not authenticated", async () => {
-      const res = await harness.request("/api/login/resolve");
-      expect(res.status).toBe(401);
-    });
-
-    it("returns superAdmin=true for super-admin user", async () => {
-      const userId = crypto.randomUUID();
-      await seedUser(userId, "boss@example.com", true);
-      mockGetSession.mockResolvedValue({ user: { id: userId, email: "boss@example.com" } });
-
-      const res = await harness.request("/api/login/resolve");
-      expect(res.status).toBe(200);
-      const data = await res.json() as { superAdmin: boolean; tenants: Array<{ slug: string }> };
-      expect(data.superAdmin).toBe(true);
-      expect(data.tenants).toEqual([]);
-    });
-
-    it("returns tenant list for member of multiple tenants", async () => {
-      const userId = crypto.randomUUID();
-      await seedUser(userId, "multi@example.com");
-      const a = await seedTenantOrg("alpha", "Alpha");
-      const b = await seedTenantOrg("bravo", "Bravo");
-      await addMember(userId, a.orgId);
-      await addMember(userId, b.orgId);
-      mockGetSession.mockResolvedValue({ user: { id: userId, email: "multi@example.com" } });
-
-      const res = await harness.request("/api/login/resolve");
-      expect(res.status).toBe(200);
-      const data = await res.json() as { superAdmin: boolean; tenants: Array<{ slug: string; name: string }> };
-      expect(data.superAdmin).toBe(false);
-      expect(data.tenants.map((t) => t.slug).sort()).toEqual(["alpha", "bravo"]);
-    });
-
-    it("excludes soft-deleted tenants", async () => {
-      const userId = crypto.randomUUID();
-      await seedUser(userId, "dropped@example.com");
-      const a = await seedTenantOrg("active");
-      const b = await seedTenantOrg("gone");
-      await addMember(userId, a.orgId);
-      await addMember(userId, b.orgId);
-      await harness.runSql("UPDATE tenants SET deleted_at = unixepoch() WHERE id = ?", [b.tenantId]);
-      mockGetSession.mockResolvedValue({ user: { id: userId, email: "dropped@example.com" } });
-
-      const res = await harness.request("/api/login/resolve");
-      const data = await res.json() as { tenants: Array<{ slug: string }> };
-      expect(data.tenants.map((t) => t.slug)).toEqual(["active"]);
     });
   });
 });

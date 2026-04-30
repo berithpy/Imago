@@ -1,10 +1,26 @@
 import { Hono } from "hono";
 import { Bindings } from "../index";
 import { auth } from "../lib/auth";
+import { IMAGO_ORG_SLUG, ROLES } from "../lib/roles";
 
 export const loginRoutes = new Hono<{ Bindings: Bindings }>();
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Returns true if the user is a member of the platform `imago` org with role
+ * `imago_operator`. Replaces the legacy `user.is_super_admin` flag (removed
+ * in migration 0011).
+ */
+async function isImagoOperator(db: D1Database, userId: string): Promise<boolean> {
+  const row = await db.prepare(
+    `SELECT 1 FROM member m
+     INNER JOIN organization o ON o.id = m.organizationId
+     WHERE m.userId = ? AND o.slug = ? AND m.role = ?
+     LIMIT 1`
+  ).bind(userId, IMAGO_ORG_SLUG, ROLES.IMAGO_OPERATOR).first();
+  return !!row;
+}
 
 // ------------------------------------------------------------------
 // Universal login: magic-link request
@@ -14,7 +30,9 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // highest-privilege dashboard available.
 // ------------------------------------------------------------------
 loginRoutes.post("/magic-link", async (c) => {
-  const body = await c.req.json<{ email?: string }>().catch(() => ({}));
+  const body = await c.req
+    .json<{ email?: string }>()
+    .catch(() => ({} as { email?: string }));
   const email = (body.email ?? "").trim().toLowerCase();
 
   if (!email || !EMAIL_RE.test(email)) {
@@ -22,14 +40,14 @@ loginRoutes.post("/magic-link", async (c) => {
   }
 
   const user = await c.env.DB.prepare(
-    "SELECT id, is_super_admin FROM user WHERE lower(email) = ?"
+    "SELECT id FROM user WHERE lower(email) = ?"
   )
     .bind(email)
-    .first<{ id: string; is_super_admin: number }>();
+    .first<{ id: string }>();
 
   let shouldSend = false;
   if (user) {
-    if (user.is_super_admin) {
+    if (await isImagoOperator(c.env.DB, user.id)) {
       shouldSend = true;
     } else {
       // Check for at least one membership in a non-deleted tenant.
@@ -59,42 +77,4 @@ loginRoutes.post("/magic-link", async (c) => {
   }
 
   return c.json({ ok: true });
-});
-
-// ------------------------------------------------------------------
-// Universal login: resolve destinations for the signed-in user.
-// Returns { superAdmin, tenants[] } — the SPA picks the destination.
-// ------------------------------------------------------------------
-loginRoutes.get("/resolve", async (c) => {
-  const origin = new URL(c.req.raw.url).origin;
-  const session = await auth(c.env, origin).api.getSession({
-    headers: c.req.raw.headers,
-  });
-  if (!session) return c.json({ error: "Unauthorized" }, 401);
-
-  const email = session.user.email;
-  if (!email) return c.json({ error: "Unauthorized" }, 401);
-
-  const user = await c.env.DB.prepare(
-    "SELECT id, is_super_admin FROM user WHERE lower(email) = ?"
-  )
-    .bind(email.toLowerCase())
-    .first<{ id: string; is_super_admin: number }>();
-
-  if (!user) return c.json({ error: "Unauthorized" }, 401);
-
-  const { results } = await c.env.DB.prepare(
-    `SELECT t.slug AS slug, t.name AS name
-     FROM member m
-     INNER JOIN tenants t ON t.organization_id = m.organizationId
-     WHERE m.userId = ? AND t.deleted_at IS NULL
-     ORDER BY t.name ASC`
-  )
-    .bind(user.id)
-    .all<{ slug: string; name: string }>();
-
-  return c.json({
-    superAdmin: !!user.is_super_admin,
-    tenants: results,
-  });
 });

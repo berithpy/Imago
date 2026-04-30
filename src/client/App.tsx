@@ -10,6 +10,13 @@ import { OperatorDashboard } from "@/client/pages/OperatorDashboard";
 import { UniversalLogin } from "@/client/pages/UniversalLogin";
 import { LoginResolve } from "@/client/pages/LoginResolve";
 import { Landing } from "@/client/pages/Landing";
+import {
+  MembersPage,
+  SubscribersPage,
+  UsagePage,
+  SettingsPage,
+  BillingPage,
+} from "@/client/pages/ManagePlaceholders";
 import { TenantProvider } from "@/client/lib/tenantContext";
 
 function LegacyGalleryRedirect() {
@@ -47,6 +54,11 @@ export default function App() {
         <Route index element={<GalleryIndex />} />
         {/* Admin routes — literal segments must come before :gallerySlug catch-alls */}
         <Route path="manage" element={<TenantDashboard />} />
+        <Route path="manage/members" element={<MembersPage />} />
+        <Route path="manage/subscribers" element={<SubscribersPage />} />
+        <Route path="manage/usage" element={<UsagePage />} />
+        <Route path="manage/settings" element={<SettingsPage />} />
+        <Route path="manage/billing" element={<BillingPage />} />
         <Route path="login" element={<TenantLogin />} />
         <Route path="setup" element={<AdminSetup />} />
         {/* Gallery editor — slug-based, mirrors viewer URL */}

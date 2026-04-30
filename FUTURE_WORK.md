@@ -78,28 +78,6 @@ The tenant admin dashboard should show a usage summary — galleries used out of
 
 Storage byte counters can drift if photos are deleted without the counter being decremented. The scheduled worker should include a periodic pass that recalculates storage totals from the `photos` table and corrects any drift. This can run weekly alongside the orphan audit.
 
----
-
-## Composable Role-Based Navigation
-
-The client should move to a composable navigation system so the shell adapts cleanly to who is using the app instead of hardcoding separate nav patterns in each page.
-
-### Target behavior
-
-- **Super-admin navigation** should prioritize tenant and platform controls (tenant list, provisioning, platform health, global settings).
-- **Tenant-admin navigation** should prioritize day-to-day gallery operations (dashboard, gallery management, subscribers, usage/limits, account settings).
-- **Viewer navigation** should stay minimal and gallery-focused (gallery home, login/logout, download/export actions where permitted).
-
-### Implementation direction
-
-- Build a single navigation composition layer (e.g. role -> nav config) instead of role checks scattered through page components.
-- Keep shared shell primitives (layout, mobile drawer, top bar actions) reusable while swapping role-specific items.
-- Support contextual variants (for example, viewer inside a gallery vs. tenant in admin area) without duplicating entire layouts.
-- Ensure responsive behavior remains consistent across desktop and mobile.
-
-### Why this matters
-
-This reduces UI drift, makes auth/redirect bugs less likely, and gives us one place to evolve navigation when new roles or features are added.
 
 ---
 
@@ -222,22 +200,6 @@ The worker currently uses raw `c.env.DB.prepare(...).bind(...)` calls in every r
 
 ---
 
-## Service Layer for the Worker
-
-The worker today has only two layers: Hono routes and the database. Routes parse input, run SQL, enforce business rules, write audit logs, call R2 and Cloudflare Images, and shape the response — all inline. This concentrates too much responsibility in the HTTP layer, makes business logic hard to reuse across entry points (the upcoming scheduled worker will need to run the same deletion and notification logic the admin routes run today), and forces every test of a business rule to go through HTTP.
-
-The fix is a three-layer split:
-
-- **`routes/`** — transport only. Parse `c.req`, call a service, map the result and errors to HTTP.
-- **`services/`** — the application layer. One module per aggregate (`galleryService.ts`, `tenantService.ts`, `photoService.ts`) that owns invariants, audit logging, and cross-resource orchestration across DB, R2, Images, and email.
-- **`lib/`** — infrastructure helpers (already exists).
-
-Dependency direction is `routes → services → lib`, enforced by folder structure and code review rather than by abstract interfaces. Services call Drizzle, R2, and Images directly; the layering is about responsibility, not about hiding the database.
-
-This work pairs naturally with the Drizzle migration above. As each route file is ported, its business operations should be extracted into the matching `services/<domain>.ts` module in the same pass, since doing them separately would touch the same code twice.
-
----
-
 ## Tenant Onboarding Flow
 
 Tenant onboarding needs to be treated as a first-class workflow, not just "tenant row created".
@@ -269,42 +231,7 @@ Users should eventually be able to create their own tenant, but this should ship
 
 This keeps us moving now with a reliable manual path while preserving a clean runway for eventual self-serve onboarding.
 
+--- 
+### Tenant filter on operator dashboard
 
----
-# AUTH
-## New Roles
-
-One platform-level role and three tenant-level roles. Stored values stay technical; display names stay warm and live in a single `roleDisplay` map so vocabulary can change without a migration.
-
-| Stored value | Display name | Scope |
-| --- | --- | --- |
-| `imago_operator` | Imago operator | Entire platform |
-| `tenant_operator` | Studio owner | One top-level tenant + its sub-tenants |
-| `sub_tenant_operator` | Studio lead | One sub-tenant |
-| `tenant_collaborator` | Studio assistant | One (sub-)tenant, no member or billing controls |
-
-| Capability | Imago op | Studio owner | Studio lead | Studio assistant |
-| --- | --- | --- | --- | --- |
-| Create top-level tenant | yes | no | no | no |
-| Create sub-tenant | yes | yes (own) | no | no |
-| CRUD galleries / photos | yes (logged) | yes | yes | yes |
-| Manage members | yes | own + sub | own sub only | no |
-| Plan / billing | yes | own | no | no |
-| Soft-delete tenant | yes | own | no | no |
-| Hard-purge tenant | yes | no | no | no |
-
-Identity mapping: `imago_operator` is `user.is_super_admin = true` (not a `member.role`, so platform staff don't need a membership row on every tenant). The other three are stored as `member.role` on the tenant's organization, using custom values rather than the better-auth defaults so role names match the domain language.
-
-Structural rules:
-
-- Sub-tenancy is one level deep. Enforced in the service layer with a clean 4xx, not via a DB CHECK.
-- Parent operator writes to a sub-tenant are logged with `actor_type = "parent_operator"` and visible to that sub-tenant.
-- Imago operator writes are always logged with `actor_type = "imago_operator"` and visible to the affected tenant. Platform staff operate the platform; they do not ghost-edit client work.
-- `tenant_collaborator` membership on a parent does **not** grant access to its sub-tenants. Separate membership required.
-- A studio lead cannot remove themselves as the last operator of their sub-tenant without parent approval.
-- Viewers (email + password) stay in the JWT/magic-link path and are never part of the role hierarchy.
-
-Open decisions:
-
-- **Sub-tenant branding inheritance** — inherit parent branding by default with override, or fully independent?
-- **Vertical lock-in** — keep "Studio" vocabulary, or switch to neutral "Account / Workspace / Collaborator" before shipping? Stored values are unaffected either way.
+We should rethink that users table to be first a list of tenants and then when you click the tenant it shows you all the users in that tenants, we allready have a tenant list on that page, so we could add a search bar for the tenants and then add a button to se the users associated with that tenant, we should consider the operator users as well, how to get them

@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { createAuthClient } from "better-auth/client";
 import { SpinnerOverlay } from "@/client/components/Spinner";
 import { EmptyState } from "@/client/components/EmptyState";
 import { GalleryManagementHeader } from "@/client/components/gallery-management/GalleryManagementHeader";
@@ -10,13 +9,14 @@ import { GalleryManagementPhotoGrid } from "@/client/components/gallery-manageme
 import { GalleryManagementUploadControl } from "@/client/components/gallery-management/GalleryManagementUploadControl";
 import type { Gallery, Photo } from "@/client/lib/galleryManagement";
 import { useTenant } from "@/client/lib/tenantContext";
-
-const authClient = createAuthClient({ baseURL: `${window.location.origin}/api/auth` });
+import { useAuth } from "@/client/lib/authContext";
+import { AppShell } from "@/client/components/shell/AppShell";
 
 export function GalleryManagementPage() {
   const { gallerySlug } = useParams<{ gallerySlug: string }>();
   const navigate = useNavigate();
-  const { apiBase, routeBase } = useTenant();
+  const { apiBase, routeBase, tenantSlug } = useTenant();
+  const { auth, loading: authLoading } = useAuth();
   const [gallery, setGallery] = useState<Gallery | null>(null);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,15 +28,18 @@ export function GalleryManagementPage() {
       navigate(`${routeBase}/manage`);
       return;
     }
-
-    authClient.getSession({ fetchOptions: { credentials: "include" } }).then(({ data }) => {
-      if (!data?.session) {
-        navigate(`${routeBase}/login`);
-        return;
-      }
-      void loadGallery(gallerySlug);
-    });
-  }, [gallerySlug, navigate, routeBase]);
+    if (authLoading) return;
+    if (!auth) {
+      navigate(`${routeBase}/login`);
+      return;
+    }
+    if (!auth.superAdmin && !auth.memberships.some((m) => m.tenantSlug === tenantSlug)) {
+      navigate(`${routeBase}/login`);
+      return;
+    }
+    void loadGallery(gallerySlug);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gallerySlug, auth, authLoading, navigate, routeBase, tenantSlug]);
 
   async function loadGallery(slug: string) {
     setLoading(true);
@@ -80,82 +83,86 @@ export function GalleryManagementPage() {
 
   if (notFound) {
     return (
-      <div className="max-w-[1100px] mx-auto px-6 py-10">
-        <EmptyState
-          message="Gallery not found."
-          action={
-            <button
-              onClick={() => navigate(`${routeBase}/manage`)}
-              className="px-4 py-2 bg-transparent border border-neutral-800 rounded-lg text-neutral-500 text-sm cursor-pointer"
-            >
-              Back to galleries
-            </button>
-          }
-        />
-      </div>
+      <AppShell gallerySlug={gallerySlug}>
+        <div className="max-w-[1100px] mx-auto px-6 py-10">
+          <EmptyState
+            message="Gallery not found."
+            action={
+              <button
+                onClick={() => navigate(`${routeBase}/manage`)}
+                className="px-4 py-2 bg-transparent border border-neutral-800 rounded-lg text-neutral-500 text-sm cursor-pointer"
+              >
+                Back to galleries
+              </button>
+            }
+          />
+        </div>
+      </AppShell>
     );
   }
 
   const galleryId = gallery?.id;
 
   return (
-    <div className="max-w-[1100px] mx-auto px-6 py-10">
-      <GalleryManagementHeader
-        galleryId={galleryId ?? ""}
-        gallery={gallery}
-        hasPhotos={photos.length > 0}
-        settingsOpen={showSettings}
-        onToggleSettings={() => setShowSettings((value) => !value)}
-        onGalleryUpdated={updateGallery}
-        onPermanentDeleteSuccess={() => navigate(`${routeBase}/manage`)}
-        uploadControl={
-          galleryId ? (
-            <GalleryManagementUploadControl
-              galleryId={galleryId}
-              onUploadComplete={reloadPhotos}
-            />
-          ) : null
-        }
-      />
-
-      {showSettings && gallery && (
-        <>
-          <GalleryManagementSettingsPanel
-            galleryId={gallery.id}
-            gallery={gallery}
-            onClose={() => setShowSettings(false)}
-            onGalleryUpdated={updateGallery}
-          />
-          <GalleryManagementEmailWhitelistSection galleryId={gallery.id} />
-        </>
-      )}
-
-      {loading ? (
-        <SpinnerOverlay label="Loading photos..." />
-      ) : photos.length === 0 ? (
-        <EmptyState
-          message="No photos yet."
-          action={
+    <AppShell gallerySlug={gallerySlug}>
+      <div className="max-w-[1100px] mx-auto px-6 py-10">
+        <GalleryManagementHeader
+          galleryId={galleryId ?? ""}
+          gallery={gallery}
+          hasPhotos={photos.length > 0}
+          settingsOpen={showSettings}
+          onToggleSettings={() => setShowSettings((value) => !value)}
+          onGalleryUpdated={updateGallery}
+          onPermanentDeleteSuccess={() => navigate(`${routeBase}/manage`)}
+          uploadControl={
             galleryId ? (
               <GalleryManagementUploadControl
                 galleryId={galleryId}
                 onUploadComplete={reloadPhotos}
-                buttonLabel="Upload your first photo"
               />
             ) : null
           }
         />
-      ) : (
-        gallery && (
-          <GalleryManagementPhotoGrid
-            galleryId={gallery.id}
-            gallery={gallery}
-            photos={photos}
-            onPhotosChange={(updater) => setPhotos((current) => updater(current))}
-            onGalleryUpdated={updateGallery}
+
+        {showSettings && gallery && (
+          <>
+            <GalleryManagementSettingsPanel
+              galleryId={gallery.id}
+              gallery={gallery}
+              onClose={() => setShowSettings(false)}
+              onGalleryUpdated={updateGallery}
+            />
+            <GalleryManagementEmailWhitelistSection galleryId={gallery.id} />
+          </>
+        )}
+
+        {loading ? (
+          <SpinnerOverlay label="Loading photos..." />
+        ) : photos.length === 0 ? (
+          <EmptyState
+            message="No photos yet."
+            action={
+              galleryId ? (
+                <GalleryManagementUploadControl
+                  galleryId={galleryId}
+                  onUploadComplete={reloadPhotos}
+                  buttonLabel="Upload your first photo"
+                />
+              ) : null
+            }
           />
-        )
-      )}
-    </div>
+        ) : (
+          gallery && (
+            <GalleryManagementPhotoGrid
+              galleryId={gallery.id}
+              gallery={gallery}
+              photos={photos}
+              onPhotosChange={(updater) => setPhotos((current) => updater(current))}
+              onGalleryUpdated={updateGallery}
+            />
+          )
+        )}
+      </div>
+    </AppShell>
   );
 }

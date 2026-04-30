@@ -136,9 +136,21 @@ export async function createWorkerTestHarness(): Promise<WorkerTestHarness> {
   const seedUser = async (opts: UserSeedOptions) => {
     const id = crypto.randomUUID();
     await runSql(
-      "INSERT INTO user (id, name, email, emailVerified, is_super_admin, createdAt, updatedAt) VALUES (?, ?, ?, 1, ?, unixepoch(), unixepoch())",
-      [id, opts.name ?? opts.email, opts.email, opts.isSuperAdmin ? 1 : 0]
+      "INSERT INTO user (id, name, email, emailVerified, createdAt, updatedAt) VALUES (?, ?, ?, 1, unixepoch(), unixepoch())",
+      [id, opts.name ?? opts.email, opts.email]
     );
+    if (opts.isSuperAdmin) {
+      // Platform-operator status is membership in the `imago` org with role
+      // `imago_operator` (migration 0011 replaced the legacy boolean flag).
+      await runSql(
+        "INSERT OR IGNORE INTO organization (id, name, slug, createdAt) VALUES ('imago-platform', 'Imago Platform', 'imago', unixepoch())",
+        []
+      );
+      await runSql(
+        "INSERT INTO member (id, userId, organizationId, role, createdAt) VALUES (?, ?, 'imago-platform', 'imago_operator', unixepoch())",
+        [crypto.randomUUID(), id]
+      );
+    }
     return { id, email: opts.email };
   };
 

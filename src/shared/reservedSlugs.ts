@@ -15,6 +15,9 @@ export const RESERVED_TENANT_SLUGS: readonly string[] = [
   "operator",
   "gallery",
   "api",
+  // Reserved for the platform organization (see migration 0011 + roles.ts).
+  // Cannot be used as a tenant slug because it shadows the Imago staff org.
+  "imago",
 ];
 
 /**

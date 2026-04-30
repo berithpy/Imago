@@ -3,11 +3,22 @@ import { getCookie } from "hono/cookie";
 import { verify } from "hono/jwt";
 import { Bindings } from "../index";
 import { auth } from "../lib/auth";
+import { resolveActorContext, type ActorContext } from "../lib/roles";
+
+export type ViewerAuthMethod =
+  | "public"
+  | "password"
+  | "magic_link"
+  | "admin_bypass";
 
 export type ViewerJWTPayload = {
   sub: "viewer";
   galleryId: string;
   tenantId?: string | null;
+  // How the viewer obtained this token. Optional for backwards compatibility
+  // with tokens minted before this field was added — those will be reported
+  // as `password` by the resolver since that was the only JWT-issuing path.
+  auth_method?: Exclude<ViewerAuthMethod, "public" | "magic_link">;
   exp: number;
 };
 
@@ -36,13 +47,17 @@ async function checkPublicGallery(
  * Public galleries bypass auth entirely.
  */
 export async function requireViewer(
-  c: Context<{ Bindings: Bindings; Variables: { viewerPayload: ViewerJWTPayload } }>,
+  c: Context<{
+    Bindings: Bindings;
+    Variables: { viewerPayload: ViewerJWTPayload; viewerAuthMethod?: ViewerAuthMethod };
+  }>,
   next: Next
 ) {
   const slug = c.req.param("slug");
 
   // 1. Public gallery — no auth needed
   if (await checkPublicGallery(c.env.DB, slug)) {
+    c.set("viewerAuthMethod", "public" satisfies ViewerAuthMethod);
     await next();
     return;
   }
@@ -72,6 +87,10 @@ export async function requireViewer(
     }
 
     c.set("viewerPayload", payload);
+    c.set(
+      "viewerAuthMethod",
+      (payload.auth_method ?? "password") satisfies ViewerAuthMethod
+    );
     await next();
     return;
   }
@@ -92,6 +111,7 @@ export async function requireViewer(
             "SELECT id FROM gallery_allowed_emails WHERE gallery_id = ? AND lower(email) = lower(?)"
           ).bind(gallery.id, session.user.email).first();
           if (allowed) {
+            c.set("viewerAuthMethod", "magic_link" satisfies ViewerAuthMethod);
             await next();
             return;
           }
@@ -158,7 +178,10 @@ export async function authenticateViewerOrAdmin(
  * Used for image serving so admins can view images without a viewer token.
  */
 export async function requireViewerOrAdmin(
-  c: Context<{ Bindings: Bindings; Variables: { viewerPayload?: ViewerJWTPayload } }>,
+  c: Context<{
+    Bindings: Bindings;
+    Variables: { viewerPayload?: ViewerJWTPayload; viewerAuthMethod?: ViewerAuthMethod };
+  }>,
   next: Next
 ) {
   // Public galleries: allow access without any token
@@ -171,5 +194,56 @@ export async function requireViewerOrAdmin(
   const result = await authenticateViewerOrAdmin(c);
   if (!result.ok) return result.response;
   if (result.viewerPayload) c.set("viewerPayload", result.viewerPayload);
+  await next();
+}
+
+// ------------------------------------------------------------------
+// Capability-based admin guard
+// Resolves an ActorContext, then runs `check(actor)` to decide.
+// 401 if anonymous, 403 if signed in but lacking the capability.
+// ------------------------------------------------------------------
+
+export type CapabilityCheck = (
+  actor: ActorContext,
+  c: Context<{ Bindings: Bindings; Variables: Record<string, unknown> }>
+) => boolean | Promise<boolean>;
+
+export function requireCapability(check: CapabilityCheck) {
+  return async (
+    c: Context<{ Bindings: Bindings; Variables: Record<string, unknown> }>,
+    next: Next
+  ) => {
+    const actor = await resolveActorContext(c);
+    if (!actor.user) return c.json({ error: "Unauthorized" }, 401);
+    const ok = await check(actor, c);
+    if (!ok) return c.json({ error: "Forbidden" }, 403);
+    c.set("actor", actor);
+    await next();
+  };
+}
+
+// ------------------------------------------------------------------
+// Tenant membership guard
+// Used on the tenant-scoped admin mount (/api/t/:slug/admin/*) to ensure
+// the actor is either an Imago operator or a direct member of the tenant
+// resolved by `requireTenant`. Skips the `/setup` bootstrap path so the
+// first admin can be created.
+// ------------------------------------------------------------------
+export async function requireTenantMember(
+  c: Context<{ Bindings: Bindings; Variables: Record<string, unknown> }>,
+  next: Next
+) {
+  if (c.req.path.endsWith("/setup")) return next();
+  const tenantId = c.get("tenantId") as string | undefined;
+  const actor = await resolveActorContext(c);
+  if (!actor.user) return c.json({ error: "Unauthorized" }, 401);
+  if (actor.superAdmin) {
+    c.set("actor", actor);
+    return next();
+  }
+  if (!tenantId) return c.json({ error: "Forbidden" }, 403);
+  const isMember = actor.memberships.some((m) => m.tenantId === tenantId);
+  if (!isMember) return c.json({ error: "Forbidden" }, 403);
+  c.set("actor", actor);
   await next();
 }

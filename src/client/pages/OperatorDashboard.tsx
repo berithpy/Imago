@@ -1,9 +1,10 @@
 import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { createAuthClient } from "better-auth/client";
+import { Button } from "@/client/components/Button";
+import { CreateTenantForm } from "@/client/components/CreateTenantForm";
 import { SpinnerOverlay } from "@/client/components/Spinner";
-
-const authClient = createAuthClient({ baseURL: `${window.location.origin}/api/auth` });
+import { AppShell } from "@/client/components/shell/AppShell";
+import { useAuth } from "@/client/lib/authContext";
 
 const cardClass = "bg-neutral-900 border border-neutral-800 rounded-lg px-6 py-5";
 const inputClass =
@@ -35,37 +36,16 @@ type User = {
 
 type SlugStatus = "idle" | "checking" | "available" | "taken" | "invalid";
 
-function SlugIndicator({ status }: { status: SlugStatus }) {
-  if (status === "checking") return <span className="text-[0.78rem] text-neutral-500">Checking...</span>;
-  if (status === "available") return <span className="text-[0.78rem] text-amber-400">+ Available</span>;
-  if (status === "taken") return <span className="text-[0.78rem] text-red-400">X Already in use</span>;
-  if (status === "invalid") return <span className="text-[0.78rem] text-red-400">X Only lowercase letters, numbers, dashes</span>;
-  return null;
-}
-
-async function checkTenantSlug(slug: string): Promise<SlugStatus> {
-  if (!slug) return "idle";
-  const res = await fetch(`/api/operator/tenants/check-slug?slug=${encodeURIComponent(slug)}`);
-  const data = await res.json() as { valid: boolean; available: boolean };
-  if (!data.valid) return "invalid";
-  return data.available ? "available" : "taken";
-}
-
 export function OperatorDashboard() {
   const navigate = useNavigate();
+  const { auth, loading: authLoading } = useAuth();
   const [sessionChecked, setSessionChecked] = useState(false);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [tenantsLoading, setTenantsLoading] = useState(true);
   const [usersLoading, setUsersLoading] = useState(false);
   const [tenantFilter, setTenantFilter] = useState<string>("");
-
-  const [createName, setCreateName] = useState("");
-  const [createSlug, setCreateSlug] = useState("");
-  const [createSlugStatus, setCreateSlugStatus] = useState<SlugStatus>("idle");
-  const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
-  const createSlugTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showCreateTenant, setShowCreateTenant] = useState(false);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
@@ -78,26 +58,18 @@ export function OperatorDashboard() {
   const [deleteConfirmInput, setDeleteConfirmInput] = useState("");
 
   useEffect(() => {
-    authClient.getSession({ fetchOptions: { credentials: "include" } }).then(({ data }) => {
-      if (!data?.session) { navigate("/login", { replace: true }); return; }
-      fetch("/api/operator/tenants", { credentials: "include" })
-        .then(async (r) => {
-          if (r.status === 403) {
-            await authClient.signOut({ fetchOptions: { credentials: "include" } });
-            navigate("/login?error=not-authorized", { replace: true });
-            return null;
-          }
-          return r.json() as Promise<{ tenants: Tenant[] }>;
-        })
-        .then((d) => {
-          if (!d) return;
-          setTenants(d.tenants ?? []);
-          setTenantsLoading(false);
-          setSessionChecked(true);
-        })
-        .catch(() => setTenantsLoading(false));
-    });
-  }, [navigate]);
+    if (authLoading) return;
+    if (!auth) { navigate("/login", { replace: true }); return; }
+    if (!auth.superAdmin) { navigate("/login?error=not-authorized", { replace: true }); return; }
+    fetch("/api/operator/tenants", { credentials: "include" })
+      .then((r) => r.json() as Promise<{ tenants: Tenant[] }>)
+      .then((d) => {
+        setTenants(d.tenants ?? []);
+        setTenantsLoading(false);
+        setSessionChecked(true);
+      })
+      .catch(() => setTenantsLoading(false));
+  }, [auth, authLoading, navigate]);
 
   function loadTenants() {
     setTenantsLoading(true);
@@ -120,18 +92,6 @@ export function OperatorDashboard() {
     if (sessionChecked) loadUsers(tenantFilter);
   }, [sessionChecked, tenantFilter]);
 
-  function handleCreateNameChange(v: string) {
-    setCreateName(v);
-    const derived = v.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-    setCreateSlug(derived);
-    scheduleSlugCheck(derived, setCreateSlugStatus, createSlugTimer);
-  }
-
-  function handleCreateSlugChange(v: string) {
-    setCreateSlug(v);
-    scheduleSlugCheck(v, setCreateSlugStatus, createSlugTimer);
-  }
-
   function scheduleSlugCheck(
     slug: string,
     setStatus: (s: SlugStatus) => void,
@@ -143,26 +103,6 @@ export function OperatorDashboard() {
     timer.current = setTimeout(async () => {
       setStatus(await checkTenantSlug(slug));
     }, 400);
-  }
-
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault();
-    setCreateError(null);
-    setCreating(true);
-    try {
-      const res = await fetch("/api/operator/tenants", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ slug: createSlug, name: createName }),
-      });
-      const data = await res.json() as { error?: string };
-      if (!res.ok) { setCreateError(data.error ?? "Failed to create"); return; }
-      setCreateName(""); setCreateSlug(""); setCreateSlugStatus("idle");
-      loadTenants();
-    } finally {
-      setCreating(false);
-    }
   }
 
   function startEdit(t: Tenant) {
@@ -216,220 +156,201 @@ export function OperatorDashboard() {
   }
 
   return (
-    <div className="max-w-[960px] mx-auto px-6 py-10">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-10">
-        <div>
-          <h1 className="text-[1.75rem] font-bold">Super Admin</h1>
+    <AppShell>
+      <div className="max-w-[960px] mx-auto px-6 py-10">
+        {/* Header */}
+        <div className="mb-10">
+          <h1 className="text-[1.75rem] font-bold">Operator</h1>
           <p className="text-neutral-500 text-sm mt-0.5">Manage tenants and users</p>
         </div>
-        <button
-          onClick={async () => { await authClient.signOut({ fetchOptions: { credentials: "include" } }); navigate("/login"); }}
-          className={ghostBtnClass}
-        >
-          Sign out
-        </button>
-      </div>
 
-      {/* TENANTS */}
-      <section className="mb-14">
-        <h2 className="text-[1.15rem] font-semibold mb-5">Tenants</h2>
-
-        {/* Create form */}
-        <form onSubmit={handleCreate} className={`${cardClass} flex flex-col gap-3.5 mb-5`}>
-          <h3 className="font-semibold text-[0.95rem] mb-1">New Tenant</h3>
-          <input
-            placeholder="Name"
-            value={createName}
-            onChange={(e) => handleCreateNameChange(e.target.value)}
-            required
-            className={inputClass}
-          />
-          <div className="flex flex-col gap-1">
-            <input
-              placeholder="Slug"
-              value={createSlug}
-              onChange={(e) => handleCreateSlugChange(e.target.value)}
-              required
-              pattern="[a-z0-9-]+"
-              className={`w-full px-4 py-3 bg-neutral-950 border ${slugBorder(createSlugStatus)} rounded-lg text-neutral-100 text-sm outline-none`}
-            />
-            <SlugIndicator status={createSlugStatus} />
-          </div>
-          {createError && <p className="text-sm text-red-400">{createError}</p>}
-          <div>
-            <button
-              type="submit"
-              disabled={creating || createSlugStatus === "taken" || createSlugStatus === "invalid"}
-              className={accentBtnClass}
+        {/* TENANTS */}
+        <section className="mb-14">
+          <div className="flex justify-between items-center mb-5">
+            <h2 className="text-[1.15rem] font-semibold">Tenants</h2>
+            <Button
+              onClick={() => setShowCreateTenant((open) => !open)}
+              analyticsId="operator_new_tenant"
+              analyticsParams={{ action: showCreateTenant ? "cancel" : "open" }}
+              className="px-4 py-2 rounded-lg text-sm"
             >
-              {creating ? "Creating..." : "Create Tenant"}
-            </button>
+              {showCreateTenant ? "Cancel" : "+ New Tenant"}
+            </Button>
           </div>
-        </form>
 
-        {/* Active tenants */}
-        {tenantsLoading ? (
-          <p className="text-neutral-500 text-sm">Loading...</p>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {activeTenants.map((t) => (
-              <div key={t.id} className={`${cardClass} flex flex-col gap-2`}>
-                {editingId === t.id ? (
-                  <div className="flex flex-col gap-2">
-                    <input value={editName} onChange={(e) => setEditName(e.target.value)} className={inputClass} placeholder="Name" />
-                    <div className="flex flex-col gap-1">
+          {showCreateTenant && (
+            <CreateTenantForm
+              onCreated={() => {
+                setShowCreateTenant(false);
+                loadTenants();
+              }}
+              onCancel={() => setShowCreateTenant(false)}
+            />
+          )}
+
+          {/* Active tenants */}
+          {tenantsLoading ? (
+            <p className="text-neutral-500 text-sm">Loading...</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {activeTenants.map((t) => (
+                <div key={t.id} className={`${cardClass} flex flex-col gap-2`}>
+                  {editingId === t.id ? (
+                    <div className="flex flex-col gap-2">
+                      <input value={editName} onChange={(e) => setEditName(e.target.value)} className={inputClass} placeholder="Name" />
+                      <div className="flex flex-col gap-1">
+                        <input
+                          value={editSlug}
+                          onChange={(e) => handleEditSlugChange(e.target.value)}
+                          className={`w-full px-4 py-3 bg-neutral-950 border ${slugBorder(editSlugStatus)} rounded-lg text-neutral-100 text-sm outline-none`}
+                          placeholder="Slug"
+                        />
+                        <SlugIndicator status={editSlugStatus} />
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleSave(t)}
+                          disabled={saving || editSlugStatus === "taken" || editSlugStatus === "invalid"}
+                          className={accentBtnClass}
+                        >
+                          {saving ? "Saving..." : "Save"}
+                        </button>
+                        <button onClick={() => setEditingId(null)} className={ghostBtnClass}>Cancel</button>
+                      </div>
+                    </div>
+                  ) : deletingId === t.id ? (
+                    <div className="flex flex-col gap-2">
+                      <p className="text-sm">
+                        Type <strong>{t.slug}</strong> to confirm deletion:
+                      </p>
                       <input
-                        value={editSlug}
-                        onChange={(e) => handleEditSlugChange(e.target.value)}
-                        className={`w-full px-4 py-3 bg-neutral-950 border ${slugBorder(editSlugStatus)} rounded-lg text-neutral-100 text-sm outline-none`}
-                        placeholder="Slug"
+                        value={deleteConfirmInput}
+                        onChange={(e) => setDeleteConfirmInput(e.target.value)}
+                        placeholder={t.slug}
+                        className={inputClass}
+                        autoFocus
                       />
-                      <SlugIndicator status={editSlugStatus} />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleDelete(t)}
+                          disabled={deleteConfirmInput !== t.slug}
+                          className={`inline-block px-4 py-2 border-0 rounded-lg font-semibold text-sm cursor-pointer ${deleteConfirmInput === t.slug ? "bg-red-400 text-neutral-950" : "bg-amber-400 text-neutral-950 opacity-40"
+                            }`}
+                        >
+                          Delete
+                        </button>
+                        <button onClick={() => { setDeletingId(null); setDeleteConfirmInput(""); }} className={ghostBtnClass}>Cancel</button>
+                      </div>
                     </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleSave(t)}
-                        disabled={saving || editSlugStatus === "taken" || editSlugStatus === "invalid"}
-                        className={accentBtnClass}
-                      >
-                        {saving ? "Saving..." : "Save"}
-                      </button>
-                      <button onClick={() => setEditingId(null)} className={ghostBtnClass}>Cancel</button>
+                  ) : (
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <span className="font-semibold">{t.name}</span>
+                        <span className="text-neutral-500 text-sm ml-2">/{t.slug}</span>
+                      </div>
+                      <div className="flex gap-1.5">
+                        <button onClick={() => navigate(`/${t.slug}/manage`)} className={ghostBtnClass} title="Act as tenant">
+                          Open
+                        </button>
+                        <button onClick={() => startEdit(t)} className={ghostBtnClass}>Edit</button>
+                        <button
+                          onClick={() => { setDeletingId(t.id); setDeleteConfirmInput(""); }}
+                          className="px-4 py-2 bg-transparent border border-neutral-800 rounded-lg text-red-400 text-sm cursor-pointer"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ) : deletingId === t.id ? (
-                  <div className="flex flex-col gap-2">
-                    <p className="text-sm">
-                      Type <strong>{t.slug}</strong> to confirm deletion:
-                    </p>
-                    <input
-                      value={deleteConfirmInput}
-                      onChange={(e) => setDeleteConfirmInput(e.target.value)}
-                      placeholder={t.slug}
-                      className={inputClass}
-                      autoFocus
-                    />
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleDelete(t)}
-                        disabled={deleteConfirmInput !== t.slug}
-                        className={`inline-block px-4 py-2 border-0 rounded-lg font-semibold text-sm cursor-pointer ${deleteConfirmInput === t.slug ? "bg-red-400 text-neutral-950" : "bg-amber-400 text-neutral-950 opacity-40"
-                          }`}
-                      >
-                        Delete
-                      </button>
-                      <button onClick={() => { setDeletingId(null); setDeleteConfirmInput(""); }} className={ghostBtnClass}>Cancel</button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex justify-between items-center">
+                  )}
+                </div>
+              ))}
+              {activeTenants.length === 0 && (
+                <p className="text-neutral-500 text-sm">No tenants yet.</p>
+              )}
+            </div>
+          )}
+
+          {/* Soft-deleted tenants */}
+          {deletedTenants.length > 0 && (
+            <details className="mt-4">
+              <summary className="text-sm text-neutral-500 cursor-pointer">
+                {deletedTenants.length} deleted tenant{deletedTenants.length !== 1 ? "s" : ""}
+              </summary>
+              <div className="flex flex-col gap-2 mt-2">
+                {deletedTenants.map((t) => (
+                  <div key={t.id} className={`${cardClass} flex justify-between items-center opacity-55`}>
                     <div>
                       <span className="font-semibold">{t.name}</span>
                       <span className="text-neutral-500 text-sm ml-2">/{t.slug}</span>
                     </div>
-                    <div className="flex gap-1.5">
-                      <button onClick={() => navigate(`/${t.slug}/manage`)} className={ghostBtnClass} title="Act as tenant">
-                        Open
-                      </button>
-                      <button onClick={() => startEdit(t)} className={ghostBtnClass}>Edit</button>
-                      <button
-                        onClick={() => { setDeletingId(t.id); setDeleteConfirmInput(""); }}
-                        className="px-4 py-2 bg-transparent border border-neutral-800 rounded-lg text-red-400 text-sm cursor-pointer"
-                      >
-                        Delete
-                      </button>
-                    </div>
+                    <button onClick={() => handleRestore(t)} className={ghostBtnClass}>Restore</button>
                   </div>
-                )}
-              </div>
-            ))}
-            {activeTenants.length === 0 && (
-              <p className="text-neutral-500 text-sm">No tenants yet.</p>
-            )}
-          </div>
-        )}
-
-        {/* Soft-deleted tenants */}
-        {deletedTenants.length > 0 && (
-          <details className="mt-4">
-            <summary className="text-sm text-neutral-500 cursor-pointer">
-              {deletedTenants.length} deleted tenant{deletedTenants.length !== 1 ? "s" : ""}
-            </summary>
-            <div className="flex flex-col gap-2 mt-2">
-              {deletedTenants.map((t) => (
-                <div key={t.id} className={`${cardClass} flex justify-between items-center opacity-55`}>
-                  <div>
-                    <span className="font-semibold">{t.name}</span>
-                    <span className="text-neutral-500 text-sm ml-2">/{t.slug}</span>
-                  </div>
-                  <button onClick={() => handleRestore(t)} className={ghostBtnClass}>Restore</button>
-                </div>
-              ))}
-            </div>
-          </details>
-        )}
-      </section>
-
-      {/* USERS */}
-      <section>
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-[1.15rem] font-semibold">Users</h2>
-          <select
-            value={tenantFilter}
-            onChange={(e) => setTenantFilter(e.target.value)}
-            className="px-3 py-2 rounded-md border border-neutral-800 bg-neutral-900 text-neutral-100 text-sm cursor-pointer"
-          >
-            <option value="">All tenants</option>
-            {activeTenants.map((t) => (
-              <option key={t.id} value={t.id}>{t.name}</option>
-            ))}
-          </select>
-        </div>
-
-        {usersLoading ? (
-          <p className="text-neutral-500 text-sm">Loading...</p>
-        ) : users.length === 0 ? (
-          <p className="text-neutral-500 text-sm">No users found.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-[0.875rem]">
-              <thead>
-                <tr className="border-b border-neutral-800 text-left">
-                  <th className="px-3 py-3 font-semibold text-neutral-500">Name</th>
-                  <th className="px-3 py-3 font-semibold text-neutral-500">Email</th>
-                  <th className="px-3 py-3 font-semibold text-neutral-500">Tenant</th>
-                  <th className="px-3 py-3 font-semibold text-neutral-500">Role</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((u) => (
-                  <tr key={u.id} className="border-b border-neutral-800">
-                    <td className="px-3 py-3">
-                      {u.name}
-                      {u.is_super_admin ? (
-                        <span className="ml-1.5 text-[0.7rem] px-1.5 py-0.5 rounded bg-amber-400 text-neutral-950 font-semibold">SUPER</span>
-                      ) : null}
-                    </td>
-                    <td className="px-3 py-3 text-neutral-500">{u.email}</td>
-                    <td className="px-3 py-3 text-neutral-500">
-                      {u.tenant_name ? (
-                        <button
-                          onClick={() => navigate(`/${tenants.find((t) => t.id === u.tenant_id)?.slug}/manage`)}
-                          className="bg-transparent border-0 text-amber-400 cursor-pointer p-0 text-inherit"
-                        >
-                          {u.tenant_name}
-                        </button>
-                      ) : "-"}
-                    </td>
-                    <td className="px-3 py-3 text-neutral-500">{u.role ?? "-"}</td>
-                  </tr>
                 ))}
-              </tbody>
-            </table>
+              </div>
+            </details>
+          )}
+        </section>
+
+        {/* USERS */}
+        <section>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-[1.15rem] font-semibold">Users</h2>
+            <select
+              value={tenantFilter}
+              onChange={(e) => setTenantFilter(e.target.value)}
+              className="px-3 py-2 rounded-md border border-neutral-800 bg-neutral-900 text-neutral-100 text-sm cursor-pointer"
+            >
+              <option value="">All tenants</option>
+              {activeTenants.map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
           </div>
-        )}
-      </section>
-    </div>
+
+          {usersLoading ? (
+            <p className="text-neutral-500 text-sm">Loading...</p>
+          ) : users.length === 0 ? (
+            <p className="text-neutral-500 text-sm">No users found.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-[0.875rem]">
+                <thead>
+                  <tr className="border-b border-neutral-800 text-left">
+                    <th className="px-3 py-3 font-semibold text-neutral-500">Name</th>
+                    <th className="px-3 py-3 font-semibold text-neutral-500">Email</th>
+                    <th className="px-3 py-3 font-semibold text-neutral-500">Tenant</th>
+                    <th className="px-3 py-3 font-semibold text-neutral-500">Role</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map((u) => (
+                    <tr key={u.id} className="border-b border-neutral-800">
+                      <td className="px-3 py-3">
+                        {u.name}
+                        {u.is_super_admin ? (
+                          <span className="ml-1.5 text-[0.7rem] px-1.5 py-0.5 rounded bg-amber-400 text-neutral-950 font-semibold">SUPER</span>
+                        ) : null}
+                      </td>
+                      <td className="px-3 py-3 text-neutral-500">{u.email}</td>
+                      <td className="px-3 py-3 text-neutral-500">
+                        {u.tenant_name ? (
+                          <button
+                            onClick={() => navigate(`/${tenants.find((t) => t.id === u.tenant_id)?.slug}/manage`)}
+                            className="bg-transparent border-0 text-amber-400 cursor-pointer p-0 text-inherit"
+                          >
+                            {u.tenant_name}
+                          </button>
+                        ) : "-"}
+                      </td>
+                      <td className="px-3 py-3 text-neutral-500">{u.role ?? "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      </div>
+    </AppShell>
   );
 }
