@@ -1,6 +1,7 @@
 import { Hono, type Context } from "hono";
 import { Bindings } from "../index";
 import { auth } from "../lib/auth";
+import { RESERVED_TENANT_SLUGS } from "../../shared/reservedSlugs";
 
 export const tenantsRoutes = new Hono<{ Bindings: Bindings }>();
 
@@ -37,7 +38,10 @@ async function requireSuperAdmin(c: TenantContext) {
 tenantsRoutes.get("/check-slug", async (c) => {
   const slug = c.req.query("slug") ?? "";
   const valid = SLUG_RE.test(slug);
-  if (!valid) return c.json({ valid: false, available: false });
+  if (!valid) return c.json({ valid: false, available: false, reserved: false });
+  if (RESERVED_TENANT_SLUGS.includes(slug)) {
+    return c.json({ valid: true, available: false, reserved: true });
+  }
 
   const existing = await c.env.DB.prepare(
     "SELECT id FROM tenants WHERE slug = ?"
@@ -45,7 +49,7 @@ tenantsRoutes.get("/check-slug", async (c) => {
     .bind(slug)
     .first();
 
-  return c.json({ valid: true, available: !existing });
+  return c.json({ valid: true, available: !existing, reserved: false });
 });
 
 // ------------------------------------------------------------------
@@ -77,6 +81,10 @@ tenantsRoutes.post("/", async (c) => {
 
   if (!SLUG_RE.test(slug)) {
     return c.json({ error: "Slug must only contain lowercase letters, numbers, and dashes" }, 400);
+  }
+
+  if (RESERVED_TENANT_SLUGS.includes(slug)) {
+    return c.json({ error: "Slug is reserved" }, 400);
   }
 
   const existing = await c.env.DB.prepare(

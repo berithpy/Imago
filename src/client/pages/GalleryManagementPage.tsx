@@ -14,41 +14,44 @@ import { useTenant } from "@/client/lib/tenantContext";
 const authClient = createAuthClient({ baseURL: `${window.location.origin}/api/auth` });
 
 export function GalleryManagementPage() {
-  const { id } = useParams<{ id: string }>();
+  const { gallerySlug } = useParams<{ gallerySlug: string }>();
   const navigate = useNavigate();
   const { apiBase, routeBase } = useTenant();
   const [gallery, setGallery] = useState<Gallery | null>(null);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
-    if (!id) {
-      navigate(`${routeBase}/admin`);
+    if (!gallerySlug) {
+      navigate(`${routeBase}/manage`);
       return;
     }
 
     authClient.getSession({ fetchOptions: { credentials: "include" } }).then(({ data }) => {
       if (!data?.session) {
-        navigate(`${routeBase}/admin/login`);
+        navigate(`${routeBase}/login`);
         return;
       }
-      void loadPhotos(id);
+      void loadGallery(gallerySlug);
     });
-  }, [id, navigate, routeBase]);
+  }, [gallerySlug, navigate, routeBase]);
 
-  async function loadPhotos(galleryId: string) {
+  async function loadGallery(slug: string) {
     setLoading(true);
     try {
-      const res = await fetch(`${apiBase}/admin/galleries/${galleryId}/photos`, {
+      const res = await fetch(`${apiBase}/admin/galleries/by-slug/${slug}`, {
         credentials: "include",
       });
       if (res.status === 401) {
-        navigate(`${routeBase}/admin/login`);
+        navigate(`${routeBase}/login`);
         return;
       }
       if (res.status === 404) {
-        navigate(`${routeBase}/admin`);
+        setNotFound(true);
+        setGallery(null);
+        setPhotos([]);
         return;
       }
       if (!res.ok) throw new Error(`Server error ${res.status}`);
@@ -56,46 +59,74 @@ export function GalleryManagementPage() {
       const data = (await res.json()) as { gallery: Gallery; photos: Photo[] };
       setGallery(data.gallery);
       setPhotos(data.photos ?? []);
+      setNotFound(false);
     } catch (err) {
-      console.error("Failed to load photos", err);
+      console.error("Failed to load gallery", err);
     } finally {
       setLoading(false);
     }
+  }
+
+  function reloadPhotos() {
+    if (!gallery) return;
+    void loadGallery(gallery.slug);
   }
 
   function updateGallery(updater: (current: Gallery) => Gallery) {
     setGallery((current) => (current ? updater(current) : current));
   }
 
-  if (!id) return null;
+  if (!gallerySlug) return null;
+
+  if (notFound) {
+    return (
+      <div className="max-w-[1100px] mx-auto px-6 py-10">
+        <EmptyState
+          message="Gallery not found."
+          action={
+            <button
+              onClick={() => navigate(`${routeBase}/manage`)}
+              className="px-4 py-2 bg-transparent border border-neutral-800 rounded-lg text-neutral-500 text-sm cursor-pointer"
+            >
+              Back to galleries
+            </button>
+          }
+        />
+      </div>
+    );
+  }
+
+  const galleryId = gallery?.id;
 
   return (
     <div className="max-w-[1100px] mx-auto px-6 py-10">
       <GalleryManagementHeader
-        galleryId={id}
+        galleryId={galleryId ?? ""}
         gallery={gallery}
         hasPhotos={photos.length > 0}
         settingsOpen={showSettings}
         onToggleSettings={() => setShowSettings((value) => !value)}
         onGalleryUpdated={updateGallery}
-        onPermanentDeleteSuccess={() => navigate("/admin")}
+        onPermanentDeleteSuccess={() => navigate(`${routeBase}/manage`)}
         uploadControl={
-          <GalleryManagementUploadControl
-            galleryId={id}
-            onUploadComplete={() => void loadPhotos(id)}
-          />
+          galleryId ? (
+            <GalleryManagementUploadControl
+              galleryId={galleryId}
+              onUploadComplete={reloadPhotos}
+            />
+          ) : null
         }
       />
 
       {showSettings && gallery && (
         <>
           <GalleryManagementSettingsPanel
-            galleryId={id}
+            galleryId={gallery.id}
             gallery={gallery}
             onClose={() => setShowSettings(false)}
             onGalleryUpdated={updateGallery}
           />
-          <GalleryManagementEmailWhitelistSection galleryId={id} />
+          <GalleryManagementEmailWhitelistSection galleryId={gallery.id} />
         </>
       )}
 
@@ -105,21 +136,25 @@ export function GalleryManagementPage() {
         <EmptyState
           message="No photos yet."
           action={
-            <GalleryManagementUploadControl
-              galleryId={id}
-              onUploadComplete={() => void loadPhotos(id)}
-              buttonLabel="Upload your first photo"
-            />
+            galleryId ? (
+              <GalleryManagementUploadControl
+                galleryId={galleryId}
+                onUploadComplete={reloadPhotos}
+                buttonLabel="Upload your first photo"
+              />
+            ) : null
           }
         />
       ) : (
-        <GalleryManagementPhotoGrid
-          galleryId={id}
-          gallery={gallery}
-          photos={photos}
-          onPhotosChange={(updater) => setPhotos((current) => updater(current))}
-          onGalleryUpdated={updateGallery}
-        />
+        gallery && (
+          <GalleryManagementPhotoGrid
+            galleryId={gallery.id}
+            gallery={gallery}
+            photos={photos}
+            onPhotosChange={(updater) => setPhotos((current) => updater(current))}
+            onGalleryUpdated={updateGallery}
+          />
+        )
       )}
     </div>
   );

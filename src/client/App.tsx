@@ -2,11 +2,13 @@ import { Routes, Route, Navigate, useParams } from "react-router-dom";
 import { GalleryIndex } from "@/client/pages/GalleryIndex";
 import { GalleryLogin } from "@/client/pages/GalleryLogin";
 import { GalleryView } from "@/client/pages/GalleryView";
-import { AdminLogin } from "@/client/pages/AdminLogin";
-import { AdminDashboard } from "@/client/pages/AdminDashboard";
+import { TenantLogin } from "@/client/pages/TenantLogin";
+import { TenantDashboard } from "@/client/pages/TenantDashboard";
 import { AdminSetup } from "@/client/pages/AdminSetup";
 import { GalleryManagementPage } from "@/client/pages/GalleryManagementPage";
-import { SuperAdminDashboard } from "@/client/pages/SuperAdminDashboard";
+import { OperatorDashboard } from "@/client/pages/OperatorDashboard";
+import { UniversalLogin } from "@/client/pages/UniversalLogin";
+import { LoginResolve } from "@/client/pages/LoginResolve";
 import { Landing } from "@/client/pages/Landing";
 import { TenantProvider } from "@/client/lib/tenantContext";
 
@@ -29,10 +31,13 @@ export default function App() {
       {/* Public landing page */}
       <Route path="/" element={<Landing />} />
 
-      {/* Global super-admin routes (static — matched before /:tenantSlug) */}
-      <Route path="/admin/setup" element={<AdminSetup />} />
-      <Route path="/admin/login" element={<AdminLogin />} />
-      <Route path="/admin" element={<SuperAdminDashboard />} />
+      {/* Universal login (admin + super-admin entry point) */}
+      <Route path="/login" element={<UniversalLogin />} />
+      <Route path="/login/resolve" element={<LoginResolve />} />
+
+      {/* Operator (super-admin) routes */}
+      <Route path="/operator/setup" element={<AdminSetup />} />
+      <Route path="/operator" element={<OperatorDashboard />} />
 
       {/* Legacy /gallery/:slug URLs — show a helpful error */}
       <Route path="/gallery/:gallerySlug" element={<LegacyGalleryRedirect />} />
@@ -40,12 +45,15 @@ export default function App() {
       {/* Tenant-scoped routes */}
       <Route path="/:tenantSlug" element={<TenantProvider />}>
         <Route index element={<GalleryIndex />} />
+        {/* Admin routes — literal segments must come before :gallerySlug catch-alls */}
+        <Route path="manage" element={<TenantDashboard />} />
+        <Route path="login" element={<TenantLogin />} />
+        <Route path="setup" element={<AdminSetup />} />
+        {/* Gallery editor — slug-based, mirrors viewer URL */}
+        <Route path=":gallerySlug/edit" element={<GalleryManagementPage />} />
+        {/* Viewer routes */}
         <Route path=":gallerySlug/login" element={<GalleryLogin />} />
         <Route path=":gallerySlug/*" element={<GalleryView />} />
-        <Route path="admin/setup" element={<AdminSetup />} />
-        <Route path="admin/login" element={<AdminLogin />} />
-        <Route path="admin" element={<AdminDashboard />} />
-        <Route path="admin/galleries/:id" element={<GalleryManagementPage />} />
       </Route>
 
       {/* Fallback */}

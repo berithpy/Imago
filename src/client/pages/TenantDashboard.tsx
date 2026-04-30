@@ -8,7 +8,7 @@ import { useTenant } from "@/client/lib/tenantContext";
 
 const authClient = createAuthClient({ baseURL: `${window.location.origin}/api/auth` });
 
-export function AdminDashboard() {
+export function TenantDashboard() {
   const navigate = useNavigate();
   const { apiBase, routeBase } = useTenant();
   const [showCreate, setShowCreate] = useState(false);
@@ -17,14 +17,14 @@ export function AdminDashboard() {
 
   useEffect(() => {
     authClient.getSession({ fetchOptions: { credentials: "include" } }).then(({ data }) => {
-      if (!data?.session) navigate(`${routeBase}/admin/login`);
+      if (!data?.session) navigate(`${routeBase}/login`);
       else setSessionChecked(true);
     });
   }, [navigate, routeBase]);
 
   async function handleSignOut() {
     await authClient.signOut({ fetchOptions: { credentials: "include" } });
-    navigate(`${routeBase}/admin/login`);
+    navigate(`${routeBase}/login`);
   }
 
   async function handleSoftDelete(id: string) {

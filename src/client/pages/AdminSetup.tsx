@@ -23,7 +23,7 @@ export function AdminSetup() {
     setLoading(true);
 
     try {
-      const res = await fetch("/api/admin/setup", {
+      const res = await fetch("/api/tenant/setup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, email, password, recoveryEmail: recoveryEmail || undefined }),
@@ -31,7 +31,7 @@ export function AdminSetup() {
       const data = await res.json() as { error?: string };
       if (res.ok) {
         setDone(true);
-        setTimeout(() => navigate(`${routeBase}/admin/login`), 2000);
+        setTimeout(() => navigate(routeBase ? `${routeBase}/login` : "/login"), 2000);
       } else {
         setError(data.error ?? "Setup failed");
       }

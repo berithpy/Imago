@@ -175,38 +175,6 @@ This is a strong feature block and it fits the product well. The only real cauti
 
 When a super-admin creates a new tenant, the first admin user for that tenant should receive an invitation email instead of having credentials created manually. The `invitation` table already exists in the schema from better-auth and can be used to implement this flow. The email should contain a link to set a password or accept the invitation, and the registration should be gated to that email address.
 
----
-
-## Tenant Onboarding Flow
-
-Tenant onboarding needs to be treated as a first-class workflow, not just "tenant row created".
-
-### Near-term: manual onboarding (required now)
-
-The current super-admin flow should support assigning an actual admin email during tenant creation and guiding that person to first login.
-
-- Super-admin creates tenant with required admin email (and optional profile metadata).
-- System creates or reuses an invitation tied to that email and tenant.
-- Invitation email is sent with a clear "set password / accept invite" action.
-- Tenant remains in a visible onboarding state until first successful admin login.
-
-This closes the current gap where tenants can be created but no usable admin identity is attached.
-
-### Mid-term: automatic onboarding improvements
-
-- Add onboarding status tracking (`invited`, `accepted`, `active`, `expired`) so super-admins can monitor and resend invites.
-- Add safe retry/resend controls and expiry handling for stale invitations.
-- Add a clear audit trail for who created the tenant and who accepted onboarding.
-
-### Long-term: self-serve tenant creation (not enabled yet)
-
-Users should eventually be able to create their own tenant, but this should ship behind explicit controls and policy decisions.
-
-- Keep this feature disabled by default until billing/plan limits, abuse prevention, and domain/email verification policy are defined.
-- Design onboarding so the current manual flow and future self-serve flow share the same core invitation and activation pipeline.
-- Consider approval or allowlist gates for early rollout before open self-serve.
-
-This keeps us moving now with a reliable manual path while preserving a clean runway for eventual self-serve onboarding.
 
 ---
 
@@ -270,21 +238,73 @@ This work pairs naturally with the Drizzle migration above. As each route file i
 
 ---
 
-## Universal Login
+## Tenant Onboarding Flow
 
-`/admin/login` today is a super-admin-only login (Imago operator). Tenant photographers must know their own slug and log in at `/{tenantSlug}/admin/login`. Gallery viewers (clients) log in at `/{tenantSlug}/{gallerySlug}/login`. The public landing page therefore intentionally omits any "Log in" affordance, because no single URL serves all three audiences.
+Tenant onboarding needs to be treated as a first-class workflow, not just "tenant row created".
 
-The fix is a real universal login: a single email-driven entry point that looks up which tenant(s) and role(s) the email is associated with and routes the user accordingly.
+### Near-term: manual onboarding (required now)
 
-- Single email field, no slug required.
-- Backend resolves the email to one of: super-admin, tenant admin (one or many tenants — disambiguate if more than one), or viewer-allowed gallery.
-- Magic link continues to be the primary auth method; password fallback preserved where it already exists.
-- Replaces the bookmarks photographers and clients currently rely on.
+The current super-admin flow should support assigning an actual admin email during tenant creation and guiding that person to first login.
 
-Once shipped, the public landing page can grow a prominent "Log in" CTA that points to the universal entry point.
+- Super-admin creates tenant with required admin email (and optional profile metadata).
+- System creates or reuses an invitation tied to that email and tenant.
+- Invitation email is sent with a clear "set password / accept invite" action.
+- Tenant remains in a visible onboarding state until first successful admin login.
+
+This closes the current gap where tenants can be created but no usable admin identity is attached.
+
+### Mid-term: automatic onboarding improvements
+
+- Add onboarding status tracking (`invited`, `accepted`, `active`, `expired`) so super-admins can monitor and resend invites.
+- Add safe retry/resend controls and expiry handling for stale invitations.
+- Add a clear audit trail for who created the tenant and who accepted onboarding.
+
+### Long-term: self-serve tenant creation (not enabled yet)
+
+Users should eventually be able to create their own tenant, but this should ship behind explicit controls and policy decisions.
+
+- Keep this feature disabled by default until billing/plan limits, abuse prevention, and domain/email verification policy are defined.
+- Design onboarding so the current manual flow and future self-serve flow share the same core invitation and activation pipeline.
+- Consider approval or allowlist gates for early rollout before open self-serve.
+
+This keeps us moving now with a reliable manual path while preserving a clean runway for eventual self-serve onboarding.
+
 
 ---
+# AUTH
+## New Roles
 
-## Rename `/admin/login`
+One platform-level role and three tenant-level roles. Stored values stay technical; display names stay warm and live in a single `roleDisplay` map so vocabulary can change without a migration.
 
-The current `/admin/login` route is super-admin only and the name is misleading — every other "admin" surface in the app is tenant-admin. After universal login lands (above), rename `/admin/login` to something accurate (`/operator/login` or fold it into the universal flow). Update internal links and consider renaming the `AdminLogin` component / `SuperAdminDashboard` pair so the codebase reflects the actual roles.
+| Stored value | Display name | Scope |
+| --- | --- | --- |
+| `imago_operator` | Imago operator | Entire platform |
+| `tenant_operator` | Studio owner | One top-level tenant + its sub-tenants |
+| `sub_tenant_operator` | Studio lead | One sub-tenant |
+| `tenant_collaborator` | Studio assistant | One (sub-)tenant, no member or billing controls |
+
+| Capability | Imago op | Studio owner | Studio lead | Studio assistant |
+| --- | --- | --- | --- | --- |
+| Create top-level tenant | yes | no | no | no |
+| Create sub-tenant | yes | yes (own) | no | no |
+| CRUD galleries / photos | yes (logged) | yes | yes | yes |
+| Manage members | yes | own + sub | own sub only | no |
+| Plan / billing | yes | own | no | no |
+| Soft-delete tenant | yes | own | no | no |
+| Hard-purge tenant | yes | no | no | no |
+
+Identity mapping: `imago_operator` is `user.is_super_admin = true` (not a `member.role`, so platform staff don't need a membership row on every tenant). The other three are stored as `member.role` on the tenant's organization, using custom values rather than the better-auth defaults so role names match the domain language.
+
+Structural rules:
+
+- Sub-tenancy is one level deep. Enforced in the service layer with a clean 4xx, not via a DB CHECK.
+- Parent operator writes to a sub-tenant are logged with `actor_type = "parent_operator"` and visible to that sub-tenant.
+- Imago operator writes are always logged with `actor_type = "imago_operator"` and visible to the affected tenant. Platform staff operate the platform; they do not ghost-edit client work.
+- `tenant_collaborator` membership on a parent does **not** grant access to its sub-tenants. Separate membership required.
+- A studio lead cannot remove themselves as the last operator of their sub-tenant without parent approval.
+- Viewers (email + password) stay in the JWT/magic-link path and are never part of the role hierarchy.
+
+Open decisions:
+
+- **Sub-tenant branding inheritance** â€” inherit parent branding by default with override, or fully independent?
+- **Vertical lock-in** â€” keep "Studio" vocabulary, or switch to neutral "Account / Workspace / Collaborator" before shipping? Stored values are unaffected either way.

@@ -277,7 +277,15 @@ export function Landing() {
       <header className="w-full border-b border-neutral-900">
         <div className="max-w-6xl mx-auto px-6 sm:px-10 py-5 flex items-center justify-between">
           <div className="text-xl font-semibold tracking-tight text-amber-400">Imago</div>
-          <LocaleToggle locale={locale} onChange={setLocale} />
+          <div className="flex items-center gap-4">
+            <a
+              href="/login"
+              className="text-sm text-neutral-400 hover:text-neutral-200 transition-colors"
+            >
+              Log in
+            </a>
+            <LocaleToggle locale={locale} onChange={setLocale} />
+          </div>
         </div>
       </header>
 

@@ -75,7 +75,7 @@ export function GalleryIndex() {
       )}
 
       <div className="mt-12 border-t border-neutral-800 pt-6">
-        <Link to="/admin/login" className="text-sm text-neutral-500">
+        <Link to="/login" className="text-sm text-neutral-500">
           Admin
         </Link>
       </div>

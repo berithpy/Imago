@@ -89,13 +89,69 @@ These are the minimum cases to run before any deploy.
 | S6 | Public gallery loads without login prompt | Yes | Yes |
 | S7 | Auth pages share the same card shell and work on mobile width | Yes | Yes |
 | S8 | Magic-link URL host matches environment | Yes | Yes |
-| S9 | Super-admin dashboard loads at `/admin` for super-admin user | Yes | Yes |
-| S10 | Non-super-admin admin user redirected away from `/admin` | Yes | Yes |
+| S9 | Operator dashboard loads at `/operator` for super-admin user | Yes | Yes |
+| S10 | Non-super-admin admin user redirected away from `/operator` | Yes | Yes |
 | S11 | Tenant gallery index loads at `/<tenantSlug>` | Yes | Yes |
+| S12 | `/login` accepts super-admin email → magic link → `/operator` | Yes | Yes |
+| S13 | `/login` accepts tenant-admin email → magic link → `/<tenantSlug>/manage` | Yes | Yes |
+| S14 | `/login` with multi-tenant user shows tenant chooser at `/login/resolve` | Yes | Yes |
 
 ---
 
 ## Full Manual Cases
+
+### MT-00 Universal Login (`/login`)
+
+#### A. Super-admin via universal login
+
+1. Open `/login` while logged out.
+2. Enter the super-admin email, submit.
+3. Open the magic link from the inbox.
+
+**Expected:**
+
+- redirect lands on `/login/resolve`, then auto-redirects to `/operator`
+- session cookie is set; `/operator` shows the operator dashboard
+
+#### B. Single-tenant admin via universal login
+
+1. Open `/login` as a tenant admin who is a member of exactly one tenant.
+2. Enter their email, submit, click the magic link.
+
+**Expected:**
+
+- `/login/resolve` auto-redirects to `/<tenantSlug>/manage`
+
+#### C. Multi-tenant admin chooser
+
+1. Make a user a member of two tenants (insert two `member` rows for distinct organizations).
+2. Sign that user in via `/login`.
+3. After clicking the magic link, observe `/login/resolve`.
+
+**Expected:**
+
+- a chooser screen lists each tenant by name
+- selecting one navigates to `/<chosenSlug>/manage`
+
+#### D. Unknown email — no enumeration
+
+1. Open `/login`, enter an email that does not exist in `user`.
+2. Submit.
+
+**Expected:**
+
+- response is `200 { ok: true }` with the same confirmation UI as a real send
+- no email is sent, no error reveals account existence
+
+#### E. Known user with no role — sign-out + error
+
+1. Manually create a user row (no super-admin flag, no `member` row).
+2. Trick the magic link by signing them in via better-auth directly (or temporarily add then remove a membership while a session is active), then visit `/login/resolve`.
+
+**Expected:**
+
+- `/login/resolve` calls sign-out and redirects to `/login?error=not-authorized`
+- the red error banner is visible above the login card
 
 ### MT-01 Admin setup on a fresh environment
 
@@ -105,13 +161,13 @@ Preconditions:
 - no admin user exists
 
 Steps:
-1. Open `/admin/setup`.
+1. Open `/operator/setup`.
 2. Enter name, admin email, password, and optional recovery email.
 3. Submit the form.
 
 Expected:
 - success state is shown
-- redirect to `/admin/login` happens automatically
+- redirect to `/login` happens automatically
 - repeating setup later should fail with a clear error or refusal
 
 ### MT-02 Admin login with valid admin email
@@ -121,7 +177,7 @@ Preconditions:
 - inbox is accessible
 
 Steps:
-1. Open `/admin/login`.
+1. Open `/login`.
 2. Enter the admin email.
 3. Submit the form.
 4. Confirm the `Check your inbox` state appears.
@@ -130,13 +186,13 @@ Steps:
 Expected:
 - confirmation UI appears immediately after submit
 - email arrives
-- clicking the link lands on `/admin`
-- admin dashboard loads successfully
+- clicking the link lands on `/login/resolve` then auto-redirects (super-admin → `/operator`; single-tenant admin → `/<tenantSlug>/manage`)
+- destination dashboard loads successfully
 
 ### MT-03 Admin login with non-admin email
 
 Steps:
-1. Open `/admin/login`.
+1. Open `/login`.
 2. Enter a non-admin email.
 3. Submit the form.
 
@@ -272,9 +328,9 @@ Expected:
 
 Pages:
 
-- `/admin/setup`
-- `/admin/login`
-- `/<tenantSlug>/admin/login`
+- `/operator/setup`
+- `/login`
+- `/<tenantSlug>/login`
 - `/<tenantSlug>/<private-slug>/login`
 
 Check:
@@ -295,7 +351,7 @@ Viewport:
 - `390 x 844` or similar mobile width
 
 Steps:
-1. Repeat quick checks on `/admin/login` and `/<tenantSlug>/<private-slug>`.
+1. Repeat quick checks on `/login` and `/<tenantSlug>/<private-slug>`.
 2. Trigger at least one validation or auth error.
 
 Expected:
@@ -363,20 +419,20 @@ Preconditions:
 - a separate tenant-admin user exists (no super-admin flag)
 
 Steps:
-1. Log in as the super-admin. Open `/admin`.
-2. Log out. Log in as the tenant-admin. Open `/admin`.
-3. Open `/admin` with no session at all (fresh incognito).
+1. Log in as the super-admin via `/login`. Open `/operator`.
+2. Log out. Log in as the tenant-admin via `/login`. Open `/operator`.
+3. Open `/operator` with no session at all (fresh incognito).
 
 Expected:
 - Step 1: super-admin dashboard loads with Tenants and Users sections
-- Step 2: redirected to `/admin/login` (403 from the API)
-- Step 3: redirected to `/admin/login` (no session)
+- Step 2: redirected to `/login` (403 from the API)
+- Step 3: redirected to `/login` (no session)
 
 ### MT-16 Create tenant with slug availability
 
 Preconditions:
 - logged in as super-admin
-- `/admin` dashboard is open
+- `/operator` dashboard is open
 
 Steps:
 1. Type a name into the New Tenant form. Confirm the slug field is auto-populated.
@@ -431,10 +487,10 @@ Preconditions:
 - logged in as super-admin
 
 Steps:
-1. On the `/admin` dashboard, click **Open →** next to a tenant.
+1. On the `/operator` dashboard, click **Open →** next to a tenant.
 
 Expected:
-- browser navigates to `/<tenantSlug>/admin`
+- browser navigates to `/<tenantSlug>/manage`
 - the tenant admin dashboard loads (same session, no re-login required because the guard only checks session existence)
 
 ### MT-20 Users section with tenant filter
@@ -443,7 +499,7 @@ Preconditions:
 - at least two tenants exist, each with at least one admin user
 
 Steps:
-1. On `/admin`, scroll to the Users section.
+1. On `/operator`, scroll to the Users section.
 2. Confirm the table initially shows all users across all tenants.
 3. Select a specific tenant from the dropdown.
 4. Confirm the table updates to show only users belonging to that tenant.
@@ -452,5 +508,5 @@ Steps:
 Expected:
 - table updates without page reload
 - super-admin users are marked with a **SUPER** badge
-- tenant column shows the tenant name and is clickable (navigates to that tenant's admin)
+- tenant column shows the tenant name and is clickable (navigates to that tenant's dashboard)
 - read-only: no edit or delete controls are present

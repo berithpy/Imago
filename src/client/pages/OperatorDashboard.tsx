@@ -51,7 +51,7 @@ async function checkTenantSlug(slug: string): Promise<SlugStatus> {
   return data.available ? "available" : "taken";
 }
 
-export function SuperAdminDashboard() {
+export function OperatorDashboard() {
   const navigate = useNavigate();
   const [sessionChecked, setSessionChecked] = useState(false);
   const [tenants, setTenants] = useState<Tenant[]>([]);

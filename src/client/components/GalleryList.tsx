@@ -78,7 +78,7 @@ export function GalleryList({ refreshKey, onSoftDelete, onRestore, onPermanentDe
           >
             <div className="min-w-0">
               <Link
-                to={`${routeBase}/admin/galleries/${g.id}`}
+                to={`${routeBase}/${g.slug}/edit`}
                 className="text-neutral-100 font-semibold"
               >
                 {g.name}
@@ -93,7 +93,7 @@ export function GalleryList({ refreshKey, onSoftDelete, onRestore, onPermanentDe
             </div>
             <div className="flex gap-1.5">
               <Link
-                to={`${routeBase}/admin/galleries/${g.id}`}
+                to={`${routeBase}/${g.slug}/edit`}
                 className="px-4 py-2 bg-transparent border border-neutral-800 rounded-lg text-neutral-500 text-sm"
               >
                 Manage

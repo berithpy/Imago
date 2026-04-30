@@ -41,24 +41,24 @@ describe("tenants routes", () => {
   // Auth guards
   // ------------------------------------------------------------------
 
-  it("GET /api/admin/tenants returns 401 without session", async () => {
+  it("GET /api/operator/tenants returns 401 without session", async () => {
     mockGetSession.mockResolvedValueOnce(null);
-    const res = await harness.request("/api/admin/tenants");
+    const res = await harness.request("/api/operator/tenants");
     expect(res.status).toBe(401);
   });
 
-  it("GET /api/admin/tenants returns 403 when user is not super-admin", async () => {
+  it("GET /api/operator/tenants returns 403 when user is not super-admin", async () => {
     // A real super-admin already exists, plus a separate non-super-admin user
     // who is the one logging in. That second user must remain forbidden.
     await harness.seedUser({ email: "real-super@example.com", isSuperAdmin: true });
     await harness.seedUser({ email: "superadmin@example.com", isSuperAdmin: false });
-    const res = await harness.request("/api/admin/tenants");
+    const res = await harness.request("/api/operator/tenants");
     expect(res.status).toBe(403);
   });
 
-  it("GET /api/admin/tenants returns 200 for super-admin", async () => {
+  it("GET /api/operator/tenants returns 200 for super-admin", async () => {
     await harness.seedUser({ email: "superadmin@example.com", isSuperAdmin: true });
-    const res = await harness.request("/api/admin/tenants");
+    const res = await harness.request("/api/operator/tenants");
     expect(res.status).toBe(200);
     const body = await res.json() as { tenants: unknown[] };
     expect(Array.isArray(body.tenants)).toBe(true);
@@ -68,9 +68,9 @@ describe("tenants routes", () => {
   // CRUD
   // ------------------------------------------------------------------
 
-  it("POST /api/admin/tenants creates a tenant and returns 201", async () => {
+  it("POST /api/operator/tenants creates a tenant and returns 201", async () => {
     await harness.seedUser({ email: "superadmin@example.com", isSuperAdmin: true });
-    const res = await harness.request("/api/admin/tenants", {
+    const res = await harness.request("/api/operator/tenants", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ slug: "acme-corp", name: "Acme Corp" }),
@@ -81,9 +81,9 @@ describe("tenants routes", () => {
     expect(body.tenant.name).toBe("Acme Corp");
   });
 
-  it("POST /api/admin/tenants returns 400 for invalid slug format", async () => {
+  it("POST /api/operator/tenants returns 400 for invalid slug format", async () => {
     await harness.seedUser({ email: "superadmin@example.com", isSuperAdmin: true });
-    const res = await harness.request("/api/admin/tenants", {
+    const res = await harness.request("/api/operator/tenants", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ slug: "Bad Slug!", name: "Test" }),
@@ -93,10 +93,10 @@ describe("tenants routes", () => {
     expect(body.error).toMatch(/slug/i);
   });
 
-  it("POST /api/admin/tenants returns 409 for duplicate slug", async () => {
+  it("POST /api/operator/tenants returns 409 for duplicate slug", async () => {
     await harness.seedUser({ email: "superadmin@example.com", isSuperAdmin: true });
     await harness.seedTenant("duplicate-slug");
-    const res = await harness.request("/api/admin/tenants", {
+    const res = await harness.request("/api/operator/tenants", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ slug: "duplicate-slug", name: "Another" }),
@@ -104,10 +104,10 @@ describe("tenants routes", () => {
     expect(res.status).toBe(409);
   });
 
-  it("PATCH /api/admin/tenants/:id updates name", async () => {
+  it("PATCH /api/operator/tenants/:id updates name", async () => {
     await harness.seedUser({ email: "superadmin@example.com", isSuperAdmin: true });
     const tenant = await harness.seedTenant("patch-me", "Original Name");
-    const res = await harness.request(`/api/admin/tenants/${tenant.id}`, {
+    const res = await harness.request(`/api/operator/tenants/${tenant.id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name: "Updated Name" }),
@@ -117,11 +117,11 @@ describe("tenants routes", () => {
     expect(body.tenant.name).toBe("Updated Name");
   });
 
-  it("DELETE /api/admin/tenants/:id soft-deletes the tenant", async () => {
+  it("DELETE /api/operator/tenants/:id soft-deletes the tenant", async () => {
     await harness.seedUser({ email: "superadmin@example.com", isSuperAdmin: true });
     const tenant = await harness.seedTenant("to-delete");
 
-    const delRes = await harness.request(`/api/admin/tenants/${tenant.id}`, { method: "DELETE" });
+    const delRes = await harness.request(`/api/operator/tenants/${tenant.id}`, { method: "DELETE" });
     expect(delRes.status).toBe(200);
 
     const row = await harness.env.DB.prepare(
@@ -130,12 +130,12 @@ describe("tenants routes", () => {
     expect(row?.deleted_at).not.toBeNull();
   });
 
-  it("POST /api/admin/tenants/:id/restore clears deleted_at", async () => {
+  it("POST /api/operator/tenants/:id/restore clears deleted_at", async () => {
     await harness.seedUser({ email: "superadmin@example.com", isSuperAdmin: true });
     const tenant = await harness.seedTenant("to-restore");
     await harness.runSql("UPDATE tenants SET deleted_at = unixepoch() WHERE id = ?", [tenant.id]);
 
-    const res = await harness.request(`/api/admin/tenants/${tenant.id}/restore`, { method: "POST" });
+    const res = await harness.request(`/api/operator/tenants/${tenant.id}/restore`, { method: "POST" });
     expect(res.status).toBe(200);
 
     const row = await harness.env.DB.prepare(
@@ -148,24 +148,24 @@ describe("tenants routes", () => {
   // check-slug
   // ------------------------------------------------------------------
 
-  it("GET /api/admin/tenants/check-slug returns available=true for free slug", async () => {
-    const res = await harness.request("/api/admin/tenants/check-slug?slug=new-tenant");
+  it("GET /api/operator/tenants/check-slug returns available=true for free slug", async () => {
+    const res = await harness.request("/api/operator/tenants/check-slug?slug=new-tenant");
     expect(res.status).toBe(200);
     const body = await res.json() as { available: boolean; valid: boolean };
     expect(body.available).toBe(true);
     expect(body.valid).toBe(true);
   });
 
-  it("GET /api/admin/tenants/check-slug returns available=false for taken slug", async () => {
+  it("GET /api/operator/tenants/check-slug returns available=false for taken slug", async () => {
     await harness.seedTenant("taken-slug");
-    const res = await harness.request("/api/admin/tenants/check-slug?slug=taken-slug");
+    const res = await harness.request("/api/operator/tenants/check-slug?slug=taken-slug");
     expect(res.status).toBe(200);
     const body = await res.json() as { available: boolean };
     expect(body.available).toBe(false);
   });
 
-  it("GET /api/admin/tenants/check-slug returns valid=false for invalid format", async () => {
-    const res = await harness.request("/api/admin/tenants/check-slug?slug=Bad+Slug");
+  it("GET /api/operator/tenants/check-slug returns valid=false for invalid format", async () => {
+    const res = await harness.request("/api/operator/tenants/check-slug?slug=Bad+Slug");
     expect(res.status).toBe(200);
     const body = await res.json() as { valid: boolean };
     expect(body.valid).toBe(false);
@@ -175,16 +175,16 @@ describe("tenants routes", () => {
   // Users endpoint
   // ------------------------------------------------------------------
 
-  it("GET /api/admin/users returns 403 for non-super-admin", async () => {
+  it("GET /api/tenant/users returns 403 for non-super-admin", async () => {
     await harness.seedUser({ email: "superadmin@example.com", isSuperAdmin: false });
-    const res = await harness.request("/api/admin/users");
+    const res = await harness.request("/api/tenant/users");
     expect(res.status).toBe(403);
   });
 
-  it("GET /api/admin/users returns all users for super-admin", async () => {
+  it("GET /api/tenant/users returns all users for super-admin", async () => {
     await harness.seedUser({ email: "superadmin@example.com", isSuperAdmin: true });
     await harness.seedUser({ email: "member@example.com" });
-    const res = await harness.request("/api/admin/users");
+    const res = await harness.request("/api/tenant/users");
     expect(res.status).toBe(200);
     const body = await res.json() as { users: Array<{ email: string }> };
     const emails = body.users.map((u) => u.email);
@@ -192,7 +192,7 @@ describe("tenants routes", () => {
     expect(emails).toContain("member@example.com");
   });
 
-  it("GET /api/admin/users?tenantId= filters by tenant via member table", async () => {
+  it("GET /api/tenant/users?tenantId= filters by tenant via member table", async () => {
     await harness.seedUser({ email: "superadmin@example.com", isSuperAdmin: true });
     const tenantUser = await harness.seedUser({ email: "tenant-member@example.com" });
     const otherUser = await harness.seedUser({ email: "other@example.com" });
@@ -213,7 +213,7 @@ describe("tenants routes", () => {
       [crypto.randomUUID(), tenantUser.id, orgId]
     );
 
-    const res = await harness.request(`/api/admin/users?tenantId=${tenant.id}`);
+    const res = await harness.request(`/api/tenant/users?tenantId=${tenant.id}`);
     expect(res.status).toBe(200);
     const body = await res.json() as { users: Array<{ email: string }> };
     const emails = body.users.map((u) => u.email);
@@ -225,9 +225,9 @@ describe("tenants routes", () => {
   // PATCH edge cases
   // ------------------------------------------------------------------
 
-  it("PATCH /api/admin/tenants/:id returns 404 for non-existent tenant", async () => {
+  it("PATCH /api/operator/tenants/:id returns 404 for non-existent tenant", async () => {
     await harness.seedUser({ email: "superadmin@example.com", isSuperAdmin: true });
-    const res = await harness.request(`/api/admin/tenants/${crypto.randomUUID()}`, {
+    const res = await harness.request(`/api/operator/tenants/${crypto.randomUUID()}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name: "Ghost Name" }),
@@ -235,10 +235,10 @@ describe("tenants routes", () => {
     expect(res.status).toBe(404);
   });
 
-  it("PATCH /api/admin/tenants/:id returns 400 for invalid slug format", async () => {
+  it("PATCH /api/operator/tenants/:id returns 400 for invalid slug format", async () => {
     await harness.seedUser({ email: "superadmin@example.com", isSuperAdmin: true });
     const tenant = await harness.seedTenant("valid-slug");
-    const res = await harness.request(`/api/admin/tenants/${tenant.id}`, {
+    const res = await harness.request(`/api/operator/tenants/${tenant.id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ slug: "Invalid Slug!" }),
@@ -247,11 +247,11 @@ describe("tenants routes", () => {
     expect(await res.json()).toMatchObject({ error: expect.stringContaining("Slug") });
   });
 
-  it("PATCH /api/admin/tenants/:id returns 409 for duplicate slug", async () => {
+  it("PATCH /api/operator/tenants/:id returns 409 for duplicate slug", async () => {
     await harness.seedUser({ email: "superadmin@example.com", isSuperAdmin: true });
     await harness.seedTenant("already-taken");
     const tenant = await harness.seedTenant("mine");
-    const res = await harness.request(`/api/admin/tenants/${tenant.id}`, {
+    const res = await harness.request(`/api/operator/tenants/${tenant.id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ slug: "already-taken" }),
@@ -259,10 +259,10 @@ describe("tenants routes", () => {
     expect(res.status).toBe(409);
   });
 
-  it("PATCH /api/admin/tenants/:id syncs linked organization slug and name", async () => {
+  it("PATCH /api/operator/tenants/:id syncs linked organization slug and name", async () => {
     await harness.seedUser({ email: "superadmin@example.com", isSuperAdmin: true });
     // Create a tenant with an org via the API so organization_id is set
-    const createRes = await harness.request("/api/admin/tenants", {
+    const createRes = await harness.request("/api/operator/tenants", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ slug: "sync-me", name: "Before" }),
@@ -270,7 +270,7 @@ describe("tenants routes", () => {
     expect(createRes.status).toBe(201);
     const { tenant } = await createRes.json() as { tenant: { id: string; organization_id: string } };
 
-    const patchRes = await harness.request(`/api/admin/tenants/${tenant.id}`, {
+    const patchRes = await harness.request(`/api/operator/tenants/${tenant.id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name: "After", slug: "sync-me-updated" }),
@@ -288,19 +288,38 @@ describe("tenants routes", () => {
   // DELETE / restore edge cases
   // ------------------------------------------------------------------
 
-  it("DELETE /api/admin/tenants/:id returns 404 for already-deleted tenant", async () => {
+  it("DELETE /api/operator/tenants/:id returns 404 for already-deleted tenant", async () => {
     await harness.seedUser({ email: "superadmin@example.com", isSuperAdmin: true });
     const tenant = await harness.seedTenant("gone-already");
     await harness.runSql("UPDATE tenants SET deleted_at = unixepoch() WHERE id = ?", [tenant.id]);
-    const res = await harness.request(`/api/admin/tenants/${tenant.id}`, { method: "DELETE" });
+    const res = await harness.request(`/api/operator/tenants/${tenant.id}`, { method: "DELETE" });
     expect(res.status).toBe(404);
   });
 
-  it("POST /api/admin/tenants/:id/restore returns 404 for non-existent tenant", async () => {
+  it("POST /api/operator/tenants/:id/restore returns 404 for non-existent tenant", async () => {
     await harness.seedUser({ email: "superadmin@example.com", isSuperAdmin: true });
-    const res = await harness.request(`/api/admin/tenants/${crypto.randomUUID()}/restore`, {
+    const res = await harness.request(`/api/operator/tenants/${crypto.randomUUID()}/restore`, {
       method: "POST",
     });
     expect(res.status).toBe(404);
+  });
+
+  it("POST /api/operator/tenants rejects reserved slugs", async () => {
+    await harness.seedUser({ email: "superadmin@example.com", isSuperAdmin: true });
+    for (const slug of ["login", "operator", "gallery", "api"]) {
+      const res = await harness.request("/api/operator/tenants", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ slug, name: "Reserved" }),
+      });
+      expect(res.status, `slug=${slug}`).toBe(400);
+      expect(await res.json()).toEqual({ error: "Slug is reserved" });
+    }
+  });
+
+  it("GET /api/operator/tenants/check-slug flags reserved slugs", async () => {
+    const res = await harness.request("/api/operator/tenants/check-slug?slug=login");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ valid: true, available: false, reserved: true });
   });
 });

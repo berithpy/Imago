@@ -8,7 +8,7 @@ const authClient = createAuthClient({
   baseURL: `${window.location.origin}/api/auth`,
 });
 
-export function AdminLogin() {
+export function TenantLogin() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { routeBase } = useTenant();
@@ -28,7 +28,7 @@ export function AdminLogin() {
     authClient
       .getSession({ fetchOptions: { credentials: "include" } })
       .then((res: any) => {
-        if (res?.data?.session) navigate(`${routeBase}/admin`, { replace: true });
+        if (res?.data?.session) navigate(`${routeBase}/manage`, { replace: true });
       })
       .catch(() => { })
       .finally(() => setCheckingSession(false));

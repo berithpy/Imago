@@ -47,7 +47,10 @@ Worker route tests live in `src/worker/routes/__tests__/`. See `testHarness.ts` 
 | Prefix             | File                   | Who can call                  |
 | ------------------ | ---------------------- | ----------------------------- |
 | `/api/auth/*`      | better-auth (internal) | better-auth only              |
-| `/api/admin/*`     | `routes/admin.ts`      | Authenticated admin session   |
+| `/api/login/*`     | `routes/login.ts`      | Public (universal admin login: magic-link + resolve) |
+| `/api/operator/tenants/*` | `routes/tenants.ts` | Super-admin session           |
+| `/api/tenant/*`    | `routes/admin.ts`      | Authenticated admin session (global mount) |
+| `/api/t/:slug/admin/*` | `routes/admin.ts`  | Authenticated admin session (tenant-scoped mount) |
 | `/api/viewer/*`    | `routes/auth.ts`       | Public (issues viewer tokens) |
 | `/api/galleries/*` | `routes/galleries.ts`  | Public or viewer token        |
 | `/api/images/*`    | `routes/images.ts`     | Public or viewer token        |

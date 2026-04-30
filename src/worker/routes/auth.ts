@@ -112,7 +112,7 @@ viewerRoutes.post("/admin/reset", async (c) => {
 });
 
 // ------------------------------------------------------------------
-// Admin: recover — wipes the admin user so /api/admin/setup works again
+// Admin: recover — wipes the admin user so /api/tenant/setup works again
 // Cascades to session and account tables automatically.
 // ------------------------------------------------------------------
 viewerRoutes.post("/admin/recover", async (c) => {
@@ -140,7 +140,7 @@ viewerRoutes.post("/admin/recover-by-email", async (c) => {
   const origin = new URL(c.req.raw.url).origin;
   try {
     await auth(c.env, origin).api.signInMagicLink({
-      body: { email: row.value, callbackURL: "/admin" },
+      body: { email: row.value, callbackURL: "/login/resolve" },
       headers: c.req.raw.headers,
     });
   } catch (err) {
@@ -171,7 +171,7 @@ viewerRoutes.post("/admin/magic-link", async (c) => {
     const origin = new URL(c.req.raw.url).origin;
     try {
       await auth(c.env, origin).api.signInMagicLink({
-        body: { email, callbackURL: "/admin" },
+        body: { email, callbackURL: "/login/resolve" },
         headers: c.req.raw.headers,
       });
     } catch (err) {

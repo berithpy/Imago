@@ -86,7 +86,7 @@ npm run deploy
 
 ## First login
 
-After deploying, visit `https://imago.workers.dev/admin/setup` once to create your admin account. The route is disabled once a user exists.
+After deploying, visit `https://imago.workers.dev/operator/setup` once to create your admin account. The route is disabled once a user exists.
 
 ---
 

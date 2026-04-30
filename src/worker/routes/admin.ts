@@ -8,6 +8,7 @@ import { logAdminEvent } from "../lib/adminLog";
 import { sendEmail, invitedUserHtml, newPhotosHtml } from "../lib/email";
 import { tenantClause } from "../lib/db";
 import type { TenantVariables } from "../middleware/tenant";
+import { RESERVED_GALLERY_SUBPATHS } from "../../shared/reservedSlugs";
 
 export const adminRoutes = new Hono<{ Bindings: Bindings; Variables: TenantVariables }>();
 
@@ -68,12 +69,11 @@ adminRoutes.post("/setup", async (c) => {
 // ------------------------------------------------------------------
 
 // check-slug — session-guarded, returns { valid, available, reserved }
-const RESERVED_GALLERY_SLUGS = ["admin", "login", "setup"];
 adminRoutes.get("/galleries/check-slug", async (c) => {
   const slug = c.req.query("slug") ?? "";
   const valid = /^[a-z0-9-]+$/.test(slug);
   if (!valid) return c.json({ valid: false, available: false, reserved: false });
-  const reserved = RESERVED_GALLERY_SLUGS.includes(slug);
+  const reserved = RESERVED_GALLERY_SUBPATHS.includes(slug);
   if (reserved) return c.json({ valid: true, available: false, reserved: true });
   const tenantId: string | undefined = c.get("tenantId");
   const [tSql, tBindings] = tenantClause(tenantId);
@@ -143,7 +143,7 @@ adminRoutes.post("/galleries", async (c) => {
   }
 
   // Reject reserved words
-  if (RESERVED_GALLERY_SLUGS.includes(slug)) {
+  if (RESERVED_GALLERY_SUBPATHS.includes(slug)) {
     return c.json({ error: "Slug is reserved" }, 400);
   }
 
@@ -323,6 +323,32 @@ adminRoutes.get("/galleries/:id/export", async (c) => {
 });
 
 // ------------------------------------------------------------------
+// Resolve gallery by slug — returns same shape as /galleries/:id/photos.
+// Used by the management page which routes by gallerySlug.
+// ------------------------------------------------------------------
+adminRoutes.get("/galleries/by-slug/:slug", async (c) => {
+  const { slug } = c.req.param();
+  const [tSql, tBindings] = tenantClause(c.get("tenantId"));
+  const gallery = await c.env.DB.prepare(
+    `SELECT g.id, g.name, g.slug, g.description, g.is_public, g.share_preview_enabled, g.banner_photo_id, p.r2_key AS banner_r2_key,
+            g.event_date, g.expires_at
+     FROM galleries g
+     LEFT JOIN photos p ON p.id = g.banner_photo_id
+     WHERE g.slug = ? AND g.deleted_at IS NULL${tSql}`
+  )
+    .bind(slug, ...tBindings)
+    .first<{ id: string; name: string; slug: string; description: string | null; is_public: number; share_preview_enabled: number; banner_photo_id: string | null; banner_r2_key: string | null; event_date: number | null; expires_at: number | null }>();
+  if (!gallery) return c.json({ error: "Gallery not found" }, 404);
+
+  const { results } = await c.env.DB.prepare(
+    "SELECT id, r2_key, original_name, size, uploaded_at FROM photos WHERE gallery_id = ? ORDER BY sort_order ASC, uploaded_at ASC"
+  )
+    .bind(gallery.id)
+    .all();
+  return c.json({ gallery, photos: results });
+});
+
+// ------------------------------------------------------------------
 // Photos: list
 // ------------------------------------------------------------------
 adminRoutes.get("/galleries/:id/photos", async (c) => {
@@ -355,13 +381,15 @@ adminRoutes.post("/galleries/:id/photos", async (c) => {
   const { id } = c.req.param();
   const tenantId = c.get("tenantId");
   if (!tenantId) return c.json({ error: "Tenant required" }, 400);
-  const [tSql, tBindings] = tenantClause(tenantId);
 
   const gallery = await c.env.DB.prepare(
-    `SELECT id, name, slug FROM galleries WHERE id = ?${tSql}`
+    `SELECT g.id AS id, g.name AS name, g.slug AS slug, t.slug AS tenant_slug
+     FROM galleries g
+     INNER JOIN tenants t ON t.id = g.tenant_id
+     WHERE g.id = ? AND g.tenant_id = ?`
   )
-    .bind(id, ...tBindings)
-    .first<{ id: string; name: string; slug: string }>();
+    .bind(id, tenantId)
+    .first<{ id: string; name: string; slug: string; tenant_slug: string }>();
   if (!gallery) return c.json({ error: "Gallery not found" }, 404);
 
   const formData = await c.req.formData();
@@ -397,7 +425,7 @@ adminRoutes.post("/galleries/:id/photos", async (c) => {
 
   if (subscribers.length > 0) {
     const origin = new URL(c.req.raw.url).origin;
-    const galleryUrl = `${origin}/gallery/${gallery.slug}`;
+    const galleryUrl = `${origin}/${gallery.tenant_slug}/${gallery.slug}`;
     const notifyAll = Promise.all(
       subscribers.map((s) =>
         sendEmail(c.env.RESEND_API_KEY, c.env.FROM_EMAIL, {
@@ -500,8 +528,11 @@ adminRoutes.post("/galleries/:id/allowed-emails", async (c) => {
   }
 
   const gallery = await c.env.DB.prepare(
-    `SELECT id, name, slug FROM galleries WHERE id = ? AND deleted_at IS NULL${tSql}`
-  ).bind(id, ...tBindings).first<{ id: string; name: string; slug: string }>();
+    `SELECT g.id AS id, g.name AS name, g.slug AS slug, t.slug AS tenant_slug
+     FROM galleries g
+     LEFT JOIN tenants t ON t.id = g.tenant_id
+     WHERE g.id = ? AND g.deleted_at IS NULL${tSql ? " AND g.tenant_id = ?" : ""}`
+  ).bind(id, ...tBindings).first<{ id: string; name: string; slug: string; tenant_slug: string | null }>();
   if (!gallery) return c.json({ error: "Gallery not found" }, 404);
 
   const entryId = crypto.randomUUID();
@@ -514,7 +545,9 @@ adminRoutes.post("/galleries/:id/allowed-emails", async (c) => {
   }
 
   const origin = new URL(c.req.raw.url).origin;
-  const galleryUrl = `${origin}/gallery/${gallery.slug}`;
+  const galleryUrl = gallery.tenant_slug
+    ? `${origin}/${gallery.tenant_slug}/${gallery.slug}`
+    : `${origin}/${gallery.slug}`;
   await sendEmail(c.env.RESEND_API_KEY, c.env.FROM_EMAIL, {
     to: email,
     subject: `You've been invited to view ${gallery.name}`,
@@ -594,12 +627,15 @@ adminRoutes.post("/users/invite", async (c) => {
     return c.json({ error: "Failed to create user" }, 500);
   }
 
-  const adminLoginUrl = `${origin}/admin/login`;
-  await sendEmail(c.env.RESEND_API_KEY, c.env.FROM_EMAIL, {
-    to: email,
-    subject: "You've been invited to Imago",
-    html: invitedUserHtml("Imago", adminLoginUrl, email),
-  });
+  // Send a magic link instead of a static login URL — single-click activation.
+  try {
+    await auth(c.env, origin).api.signInMagicLink({
+      body: { email: email.trim(), callbackURL: "/login/resolve" },
+      headers: c.req.raw.headers,
+    });
+  } catch (err) {
+    console.error("[users/invite] Failed to send magic link:", err);
+  }
 
   await logAdminEvent(c.env.DB, "USER_INVITED", email);
 

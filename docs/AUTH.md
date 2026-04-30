@@ -30,7 +30,7 @@ Used for **gallery viewers who authenticate with a gallery password**, and for t
 - Cookie: `httpOnly`, `sameSite=Lax`, `secure: false` (hardcoded — fix in a future cleanup to mirror better-auth's `isProd` check)
 - Issued by two routes:
   - `POST /api/viewer/gallery/:slug/login` — verifies PBKDF2 password hash
-  - `POST /api/admin/galleries/:id/viewer-bypass` — admin session required; issues token without a password
+  - `POST /api/t/:tenantSlug/admin/galleries/:id/viewer-bypass` — admin session required; issues token without a password
 
 ---
 
@@ -38,17 +38,17 @@ Used for **gallery viewers who authenticate with a gallery password**, and for t
 
 ### Admin setup (one-time)
 
-**Trigger:** `GET /admin/setup`, when no admin user exists yet  
+**Trigger:** `GET /operator/setup`, when no admin user exists yet  
 **Page:** `AdminSetup.tsx`
 
 ```
 User fills name + email + password
-  → POST /api/admin/setup
+  → POST /api/tenant/setup
       ├─ Checks: SELECT id FROM user LIMIT 1  →  403 if row exists
       ├─ Calls: auth().api.signUpEmail({ email, password, name })
       ├─ Stores recovery_email in app_config
       └─ Returns { ok: true }
-  → Redirects to /admin/login after 2 s
+  → Redirects to /login after 2 s
 ```
 
 **Cookies set:** none (setup does not create a session)  
@@ -56,35 +56,49 @@ User fills name + email + password
 
 ---
 
-### Admin login (magic link)
+### Admin login — universal magic link
 
-**Trigger:** `GET /admin/login`  
-**Page:** `AdminLogin.tsx` → `LoginCard`
+**Trigger:** `GET /login`  
+**Pages:** `UniversalLogin.tsx` → `LoginCard` (request); `LoginResolve.tsx` (post-callback routing)
+
+A single entry point for both super-admins (`user.is_super_admin = 1`) and tenant admins (`member` row in any non-deleted tenant's organization). Magic-link only — no password tab.
 
 ```
 User enters email
-  → POST /api/viewer/admin/magic-link
-      ├─ Checks: SELECT email FROM user LIMIT 1
-      ├─ If email matches → auth().api.signInMagicLink({ email, callbackURL: "/admin" })
-      │    └─ better-auth sends email via Resend containing a one-time link
-      └─ Always returns { ok: true }  (no info leakage if email doesn't match)
+  → POST /api/login/magic-link
+      ├─ Look up user by email
+      ├─ If is_super_admin OR has any non-deleted tenant membership
+      │    └─ auth().api.signInMagicLink({ email, callbackURL: "/login/resolve" })
+      └─ Always returns { ok: true }  (no enumeration)
 
 User clicks link in email
   → GET /api/auth/magic-link/verify?token=...
       └─ better-auth verifies token, sets better-auth.session_token cookie
-      └─ Redirects to callbackURL → /admin
+      └─ 302 redirect → /login/resolve
+
+/login/resolve (LoginResolve.tsx)
+  → GET /api/login/resolve
+      └─ Returns { superAdmin: boolean, tenants: [{ slug, name }] }
+  Routing precedence:
+    • superAdmin === true                 → /operator
+    • tenants.length === 1                → /{slug}/manage
+    • tenants.length > 1                  → chooser → /{slug}/manage
+    • none of the above (or 401)          → sign out → /login?error=not-authorized
 ```
 
 **Cookies set:** `better-auth.session_token` (30 days, rolling)  
 **Error cases:**
-- Wrong email → same confirmation UI shown, no email sent
+- Email not associated with any admin role → same confirmation UI shown, no email sent
 - Expired link → better-auth returns an error page; user must request a new link
+- Authenticated user with no super-admin flag and no memberships → signed out at `/login/resolve`
+
+> A tenant-scoped fallback page exists at `/{tenant}/login` (`TenantLogin.tsx`) for direct bookmarks; it posts to `POST /api/viewer/admin/magic-link` (legacy single-admin lookup). New users should be sent to `/login`.
 
 ---
 
 ### Gallery login — magic link (email whitelist)
 
-**Trigger:** Navigating to a private gallery without a valid cookie, or directly to `/gallery/:slug/login`  
+**Trigger:** Navigating to a private gallery without a valid cookie, or directly to `/{tenant}/{gallery}/login`  
 **Page:** `GalleryLogin.tsx` → `LoginCard`
 
 ```
@@ -92,15 +106,15 @@ User enters email
   → POST /api/viewer/gallery/:slug/magic-link
       ├─ Looks up gallery by slug
       ├─ Checks gallery_allowed_emails for the email  →  403 if not found
-      ├─ Calls: auth().api.signInMagicLink({ email, callbackURL: "/gallery/:slug" })
+      ├─ Calls: auth().api.signInMagicLink({ email, callbackURL: "/{tenant}/{gallery}" })
       └─ Returns { ok: true }
 
 User clicks link in email
   → GET /api/auth/magic-link/verify?token=...
       └─ better-auth verifies token, sets better-auth.session_token cookie
-      └─ Redirects to callbackURL → /gallery/:slug
+      └─ Redirects to callbackURL → /{tenant}/{gallery}
 
-On /gallery/:slug, requireViewer middleware:
+On /{tenant}/{gallery}, requireViewer middleware:
   → auth().api.getSession() → user.email
   → Checks gallery_allowed_emails again
   → Grants access if email is still on the list
@@ -126,7 +140,7 @@ User enters password
       ├─ Private gallery → pbkdf2Verify(password, hash)  →  401 if wrong
       ├─ Signs JWT: { sub: "viewer", galleryId, exp: now+24h }
       └─ Sets viewer_token cookie (httpOnly, Lax, 24 h)
-  → navigate(/gallery/:slug)
+  → navigate(/{tenant}/{gallery})
 ```
 
 **Cookies set:** `viewer_token` (24 h, non-rolling)  
@@ -143,11 +157,11 @@ User enters password
 
 ```
 Admin clicks bypass
-  → POST /api/admin/galleries/:galleryId/viewer-bypass
+  → POST /api/t/:tenantSlug/admin/galleries/:galleryId/viewer-bypass
       ├─ Admin session guard checks better-auth.session_token  →  401 if missing
       ├─ Signs JWT: { sub: "viewer", galleryId, exp: now+24h }
       └─ Sets viewer_token cookie
-  → navigate(/gallery/:slug)
+  → navigate(/{tenant}/{gallery})
 ```
 
 **Cookies set:** `viewer_token` (24 h)  
@@ -165,8 +179,8 @@ Admin clicks bypass
 better-auth verifies the token
   → Sets better-auth.session_token cookie
   → HTTP 302 redirect to callbackURL
-     ├─ /admin  (admin login flow)
-     └─ /gallery/:slug  (viewer login flow)
+     ├─ /login/resolve     (admin login flow — LoginResolve dispatches to /operator or /{slug}/manage)
+     └─ /{tenant}/{gallery}  (viewer login flow)
 ```
 
 ---
@@ -226,4 +240,4 @@ In production, `APP_URL=https://imago.berith.moe` so links point to the live dom
 | Cookie | Set by | Lifetime | Carries |
 |---|---|---|---|
 | `better-auth.session_token` | better-auth (`/api/auth/*`) | 30 days rolling | Admin session, viewer magic-link session |
-| `viewer_token` | `/api/viewer/gallery/:slug/login`, `/api/admin/galleries/:id/viewer-bypass` | 24 h fixed | Viewer JWT for password/bypass auth |
+| `viewer_token` | `/api/viewer/gallery/:slug/login`, `/api/t/:tenantSlug/admin/galleries/:id/viewer-bypass` | 24 h fixed | Viewer JWT for password/bypass auth |
