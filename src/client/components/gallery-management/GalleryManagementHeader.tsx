@@ -160,7 +160,7 @@ export function GalleryManagementHeader({
               onClick={handleCopyUrl}
               title="Copy full URL"
               aria-label="Copy full URL"
-              className="inline-flex items-center justify-center w-7 h-7 bg-transparent border border-neutral-800 rounded-md text-neutral-500 text-xs cursor-pointer hover:text-amber-400 hover:border-amber-400 transition-colors"
+              className="inline-flex items-center justify-center h-7 px-2.5 bg-transparent border border-neutral-800 rounded-md text-neutral-500 text-xs cursor-pointer hover:text-amber-400 hover:border-amber-400 transition-colors"
             >
               {copyState === "copied" ? "+" : copyState === "failed" ? "X" : "Copy"}
             </button>

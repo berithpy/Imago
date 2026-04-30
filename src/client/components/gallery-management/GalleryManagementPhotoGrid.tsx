@@ -80,10 +80,10 @@ export function GalleryManagementPhotoGrid({
                 onClick={() => handleSetBanner(photo.id)}
                 disabled={settingBanner}
                 title={isBanner ? "Remove banner" : "Set as banner"}
-                className={`absolute top-1.5 left-1.5 border-0 rounded text-sm px-1.5 py-0.5 cursor-pointer leading-relaxed ${isBanner ? "bg-amber-400 text-neutral-950" : "bg-black/55 text-white"
+                className={`absolute top-1.5 left-1.5 w-7 h-7 flex items-center justify-center border-0 rounded text-sm cursor-pointer leading-none p-0 ${isBanner ? "bg-amber-400 text-neutral-950" : "bg-black/55 text-white"
                   }`}
               >
-                *
+                {isBanner ? "\u2605" : "\u2606"}
               </button>
             </div>
 

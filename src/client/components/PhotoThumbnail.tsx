@@ -13,6 +13,7 @@ type Props = {
 
 const badgeClass =
   "absolute text-[0.7rem] font-medium px-1.5 py-0.5 rounded bg-black/55 text-white pointer-events-none";
+const badgeFont: CSSProperties = { fontFamily: '"Courier New", Courier, monospace' };
 
 export function PhotoThumbnail({
   r2Key,
@@ -57,12 +58,15 @@ export function PhotoThumbnail({
         style={{ animation: "shimmer 1.5s ease-in-out infinite" }}
       />
       {index !== undefined && total !== undefined && (
-        <span className={`${badgeClass} top-1.5 left-1.5`}>
+        <span className={`${badgeClass} top-1.5 right-1.5`} style={badgeFont}>
           {index} / {total}
         </span>
       )}
       {filename && (
-        <span className={`${badgeClass} bottom-1.5 left-1.5 right-1.5 truncate text-left`}>
+        <span
+          className={`${badgeClass} bottom-1.5 left-1.5 max-w-[calc(100%-0.75rem)] truncate`}
+          style={badgeFont}
+        >
           {filename}
         </span>
       )}
