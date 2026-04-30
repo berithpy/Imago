@@ -7,6 +7,7 @@ import { AdminDashboard } from "@/client/pages/AdminDashboard";
 import { AdminSetup } from "@/client/pages/AdminSetup";
 import { GalleryManagementPage } from "@/client/pages/GalleryManagementPage";
 import { SuperAdminDashboard } from "@/client/pages/SuperAdminDashboard";
+import { Landing } from "@/client/pages/Landing";
 import { TenantProvider } from "@/client/lib/tenantContext";
 
 function LegacyGalleryRedirect() {
@@ -25,6 +26,9 @@ function LegacyGalleryRedirect() {
 export default function App() {
   return (
     <Routes>
+      {/* Public landing page */}
+      <Route path="/" element={<Landing />} />
+
       {/* Global super-admin routes (static — matched before /:tenantSlug) */}
       <Route path="/admin/setup" element={<AdminSetup />} />
       <Route path="/admin/login" element={<AdminLogin />} />
@@ -45,7 +49,7 @@ export default function App() {
       </Route>
 
       {/* Fallback */}
-      <Route path="*" element={<Navigate to="/admin" replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

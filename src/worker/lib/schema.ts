@@ -175,3 +175,15 @@ export const galleryAllowedEmails = sqliteTable("gallery_allowed_emails", {
   uniqueIndex("idx_allowed_gallery_email").on(t.galleryId, t.email),
   index("idx_allowed_emails_gallery").on(t.galleryId),
 ]);
+
+// Public-landing-page interest signups (waitlist). Emails are normalized to
+// lowercase + trimmed before insert; uniqueness is enforced at the DB level
+// so the POST handler can be idempotent.
+export const interestSignups = sqliteTable("interest_signups", {
+  id: text("id").primaryKey(),
+  email: text("email").notNull(),
+  source: text("source").notNull().default("landing"),
+  createdAt: integer("created_at").notNull().default(sql`(unixepoch())`),
+}, (t) => [
+  uniqueIndex("idx_interest_signups_email").on(t.email),
+]);

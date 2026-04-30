@@ -6,6 +6,7 @@ import { galleryRoutes } from "./routes/galleries";
 import { imageRoutes } from "./routes/images";
 import { adminRoutes } from "./routes/admin";
 import { subscribeRoutes } from "./routes/subscribe";
+import { interestRoutes } from "./routes/interest";
 import { requireTenant, type TenantVariables } from "./middleware/tenant";
 import { tenantsRoutes } from "./routes/tenants";
 import { ogImageRoutes } from "./routes/ogImage";
@@ -51,6 +52,7 @@ app.route("/api/admin/tenants", tenantsRoutes);
 app.route("/api/galleries", galleryRoutes);
 app.route("/api/images", imageRoutes);
 app.route("/api/subscribe", subscribeRoutes);
+app.route("/api/interest", interestRoutes);
 app.route("/api/og", ogImageRoutes);
 
 // Tenant-scoped routes: /api/t/:tenantSlug/{admin,viewer,galleries,images,subscribe}

@@ -267,3 +267,24 @@ The fix is a three-layer split:
 Dependency direction is `routes â†’ services â†’ lib`, enforced by folder structure and code review rather than by abstract interfaces. Services call Drizzle, R2, and Images directly; the layering is about responsibility, not about hiding the database.
 
 This work pairs naturally with the Drizzle migration above. As each route file is ported, its business operations should be extracted into the matching `services/<domain>.ts` module in the same pass, since doing them separately would touch the same code twice.
+
+---
+
+## Universal Login
+
+`/admin/login` today is a super-admin-only login (Imago operator). Tenant photographers must know their own slug and log in at `/{tenantSlug}/admin/login`. Gallery viewers (clients) log in at `/{tenantSlug}/{gallerySlug}/login`. The public landing page therefore intentionally omits any "Log in" affordance, because no single URL serves all three audiences.
+
+The fix is a real universal login: a single email-driven entry point that looks up which tenant(s) and role(s) the email is associated with and routes the user accordingly.
+
+- Single email field, no slug required.
+- Backend resolves the email to one of: super-admin, tenant admin (one or many tenants — disambiguate if more than one), or viewer-allowed gallery.
+- Magic link continues to be the primary auth method; password fallback preserved where it already exists.
+- Replaces the bookmarks photographers and clients currently rely on.
+
+Once shipped, the public landing page can grow a prominent "Log in" CTA that points to the universal entry point.
+
+---
+
+## Rename `/admin/login`
+
+The current `/admin/login` route is super-admin only and the name is misleading — every other "admin" surface in the app is tenant-admin. After universal login lands (above), rename `/admin/login` to something accurate (`/operator/login` or fold it into the universal flow). Update internal links and consider renaming the `AdminLogin` component / `SuperAdminDashboard` pair so the codebase reflects the actual roles.

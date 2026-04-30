@@ -69,6 +69,7 @@ async function resetDb(db: D1Database) {
     "DELETE FROM gallery_allowed_emails",
     "DELETE FROM photos",
     "DELETE FROM gallery_subscribers",
+    "DELETE FROM interest_signups",
     "DELETE FROM galleries",
     "DELETE FROM app_config",
     "DELETE FROM invitation",
