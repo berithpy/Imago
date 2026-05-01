@@ -1,5 +1,10 @@
 import { Hono } from "hono";
 import { Bindings } from "../index";
+import { getDb } from "../lib/db";
+import {
+  getShareableGalleryForImage,
+  resolveBannerR2Key,
+} from "../services/galleryService";
 import { VARIANT_CONFIG } from "./images";
 
 export const ogImageRoutes = new Hono<{ Bindings: Bindings }>();
@@ -16,44 +21,12 @@ export const ogImageRoutes = new Hono<{ Bindings: Bindings }>();
 // ------------------------------------------------------------------
 ogImageRoutes.get("/:tenantSlug/:gallerySlug/image", async (c) => {
   const { tenantSlug, gallerySlug } = c.req.param();
-  const now = Math.floor(Date.now() / 1000);
+  const svcCtx = { env: c.env, db: getDb(c.env), actor: null };
 
-  const gallery = await c.env.DB.prepare(
-    `SELECT g.id, g.banner_photo_id, g.tenant_id
-     FROM galleries g
-     JOIN tenants t ON t.id = g.tenant_id
-     WHERE g.slug = ?
-       AND t.slug = ?
-       AND t.deleted_at IS NULL
-       AND g.deleted_at IS NULL
-       AND (g.expires_at IS NULL OR g.expires_at > ?)
-       AND g.share_preview_enabled = 1`
-  )
-    .bind(gallerySlug, tenantSlug, now)
-    .first<{ id: string; banner_photo_id: string | null; tenant_id: string }>();
-
+  const gallery = await getShareableGalleryForImage(svcCtx, tenantSlug, gallerySlug);
   if (!gallery) return c.notFound();
 
-  let r2Key: string | null = null;
-
-  if (gallery.banner_photo_id) {
-    const banner = await c.env.DB.prepare(
-      "SELECT r2_key FROM photos WHERE id = ? AND gallery_id = ?"
-    )
-      .bind(gallery.banner_photo_id, gallery.id)
-      .first<{ r2_key: string }>();
-    r2Key = banner?.r2_key ?? null;
-  }
-
-  if (!r2Key) {
-    const first = await c.env.DB.prepare(
-      "SELECT r2_key FROM photos WHERE gallery_id = ? ORDER BY sort_order ASC, uploaded_at ASC, id ASC LIMIT 1"
-    )
-      .bind(gallery.id)
-      .first<{ r2_key: string }>();
-    r2Key = first?.r2_key ?? null;
-  }
-
+  const r2Key = await resolveBannerR2Key(svcCtx, gallery.id, gallery.bannerPhotoId);
   if (!r2Key) return c.notFound();
 
   const object = await c.env.IMAGES_BUCKET.get(r2Key);

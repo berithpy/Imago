@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/client/components/Button";
-import { CreateTenantForm } from "@/client/components/CreateTenantForm";
+import { CreateTenantForm, SlugIndicator, checkTenantSlug } from "@/client/components/CreateTenantForm";
 import { SpinnerOverlay } from "@/client/components/Spinner";
 import { AppShell } from "@/client/components/shell/AppShell";
 import { useAuth } from "@/client/lib/authContext";

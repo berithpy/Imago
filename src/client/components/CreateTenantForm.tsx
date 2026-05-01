@@ -15,7 +15,7 @@ type Props = {
   onCancel: () => void;
 };
 
-function SlugIndicator({ status }: { status: SlugStatus }) {
+export function SlugIndicator({ status }: { status: SlugStatus }) {
   if (status === "checking") return <span className="text-[0.78rem] text-neutral-500">Checking...</span>;
   if (status === "available") return <span className="text-[0.78rem] text-amber-400">+ Available</span>;
   if (status === "taken") return <span className="text-[0.78rem] text-red-400">X Already in use</span>;
@@ -23,7 +23,7 @@ function SlugIndicator({ status }: { status: SlugStatus }) {
   return null;
 }
 
-async function checkTenantSlug(slug: string): Promise<SlugStatus> {
+export async function checkTenantSlug(slug: string): Promise<SlugStatus> {
   if (!slug) return "idle";
   const res = await fetch(`/api/operator/tenants/check-slug?slug=${encodeURIComponent(slug)}`);
   const data = await res.json() as { valid: boolean; available: boolean };

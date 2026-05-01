@@ -1,10 +1,10 @@
 import { Hono } from "hono";
 import { Bindings } from "../index";
+import { getDb } from "../lib/db";
+import { recordInterest } from "../services/subscriberService";
+import { ServiceError } from "../services/types";
 
 export const interestRoutes = new Hono<{ Bindings: Bindings }>();
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const MAX_EMAIL_LEN = 254;
 
 // ------------------------------------------------------------------
 // POST /api/interest
@@ -18,27 +18,15 @@ interestRoutes.post("/", async (c) => {
     return c.json({ error: "Invalid JSON" }, 400);
   }
 
-  const raw = (body as { email?: unknown })?.email;
-  if (typeof raw !== "string") {
-    return c.json({ error: "Email required" }, 400);
+  try {
+    const ctx = { env: c.env, db: getDb(c.env), actor: null };
+    const result = await recordInterest(ctx, (body as { email?: unknown })?.email);
+    return c.json(result.alreadyRegistered ? { ok: true, alreadyRegistered: true } : { ok: true });
+  } catch (err) {
+    if (err instanceof ServiceError) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return c.json({ error: err.message }, err.status as any);
+    }
+    throw err;
   }
-
-  const email = raw.trim().toLowerCase();
-  if (email.length === 0 || email.length > MAX_EMAIL_LEN || !EMAIL_RE.test(email)) {
-    return c.json({ error: "Valid email required" }, 400);
-  }
-
-  const existing = await c.env.DB.prepare(
-    "SELECT id FROM interest_signups WHERE email = ?"
-  ).bind(email).first<{ id: string }>();
-
-  if (existing) {
-    return c.json({ ok: true, alreadyRegistered: true });
-  }
-
-  await c.env.DB.prepare(
-    "INSERT INTO interest_signups (id, email, source, created_at) VALUES (?, ?, ?, unixepoch())"
-  ).bind(crypto.randomUUID(), email, "landing").run();
-
-  return c.json({ ok: true });
 });

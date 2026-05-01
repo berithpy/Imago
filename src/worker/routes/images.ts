@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import { Bindings } from "../index";
 import { authenticateViewerOrAdmin } from "../middleware/auth";
 import type { ViewerJWTPayload } from "../middleware/auth";
+import { getDb } from "../lib/db";
+import { getGalleryTenantId, lookupPhotoGallery } from "../services/photoService";
 import type { TenantVariables } from "../middleware/tenant";
 
 export const imageRoutes = new Hono<{
@@ -37,18 +39,13 @@ imageRoutes.get("/:key{.+}", async (c) => {
   // Look up the photo's gallery so we can bypass auth for public galleries.
   // If the photo is not in the DB we fall through to normal auth (preserves
   // 401 behavior for unknown keys without a session).
-  const photoGallery = await c.env.DB.prepare(
-    `SELECT g.id AS gallery_id, g.is_public, g.tenant_id
-     FROM photos p
-     JOIN galleries g ON g.id = p.gallery_id
-     WHERE p.r2_key = ? AND g.deleted_at IS NULL`
-  )
-    .bind(key)
-    .first<{ gallery_id: string; is_public: number; tenant_id: string | null }>();
+  const svcCtx = { env: c.env, db: getDb(c.env), actor: null };
+  const photoGallery = await lookupPhotoGallery(svcCtx, key);
 
   let viewerPayload: ViewerJWTPayload | undefined;
-  const isPublic = !!photoGallery?.is_public &&
-    (!photoGallery.tenant_id || photoGallery.tenant_id === keyTenantId);
+  const isPublic =
+    !!photoGallery?.isPublic &&
+    (!photoGallery.tenantId || photoGallery.tenantId === keyTenantId);
 
   if (!isPublic) {
     const auth = await authenticateViewerOrAdmin(c);
@@ -60,12 +57,8 @@ imageRoutes.get("/:key{.+}", async (c) => {
     if (viewerPayload.tenantId) {
       if (viewerPayload.tenantId !== keyTenantId) return c.notFound();
     } else {
-      const gallery = await c.env.DB.prepare(
-        "SELECT tenant_id FROM galleries WHERE id = ? AND deleted_at IS NULL"
-      )
-        .bind(viewerPayload.galleryId)
-        .first<{ tenant_id: string | null }>();
-      if (!gallery?.tenant_id || gallery.tenant_id !== keyTenantId) return c.notFound();
+      const tenantId = await getGalleryTenantId(svcCtx, viewerPayload.galleryId);
+      if (!tenantId || tenantId !== keyTenantId) return c.notFound();
     }
   }
 

@@ -8,7 +8,9 @@ Imago is a self-hosted photography gallery app: a Vite React SPA served as stati
 | ------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | React SPA     | `src/client/`          | React Router v7, served via Cloudflare Assets binding                                                                                    |
 | Hono worker   | `src/worker/`          | Single Worker handles `/api/*`; assets fallback handled by Cloudflare                                                                    |
-| Database      | D1 (SQLite)            | Schema defined in `src/worker/lib/schema.ts` via Drizzle ORM                                                                             |
+| Routes        | `src/worker/routes/`   | Transport only: parse `c.req`, call a service, map result/errors to HTTP                                                                 |
+| Services      | `src/worker/services/` | Application layer, one module per aggregate; owns invariants, audit, R2/Images/email orchestration. Direction: `routes → services → lib` |
+| Database      | D1 (SQLite)            | Schema defined in `src/worker/lib/schema.ts` via Drizzle ORM; services use `getDb(env)` from `lib/db.ts`                                 |
 | Storage       | R2 + Cloudflare Images | R2 key = `{galleryId}/{photoId}`, Images binding for transforms                                                                          |
 | Auth (admin)  | better-auth            | Owns `/api/auth/*`; do not add Hono routes under that prefix                                                                             |
 | Auth (viewer) | JWT cookie             | Issued by `/api/viewer/gallery/:slug/login` (password) or `/api/viewer/gallery/:slug/magic-link` (email whitelist); verified per-request |

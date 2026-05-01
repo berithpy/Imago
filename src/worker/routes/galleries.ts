@@ -1,28 +1,37 @@
 import { Hono } from "hono";
 import { Bindings } from "../index";
 import { requireViewer } from "../middleware/auth";
-import { tenantClause } from "../lib/db";
+import { getDb } from "../lib/db";
+import {
+  exportGallery,
+  getPhotoById,
+  getPublicGallery,
+  listPhotos,
+  listPublicGalleries,
+} from "../services/galleryService";
+import { ServiceError } from "../services/types";
 import type { TenantVariables } from "../middleware/tenant";
 
 export const galleryRoutes = new Hono<{ Bindings: Bindings; Variables: TenantVariables }>();
+
+function svc(c: { env: Bindings }) {
+  return { env: c.env, db: getDb(c.env), actor: null };
+}
+
+function mapErr(c: any, err: unknown) {
+  if (err instanceof ServiceError) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return c.json({ error: err.message }, err.status as any);
+  }
+  throw err;
+}
 
 // ------------------------------------------------------------------
 // Public: list galleries (names + slugs only, no photos)
 // ------------------------------------------------------------------
 galleryRoutes.get("/", async (c) => {
-  const tenantId: string | undefined = c.get("tenantId");
-  const [tSql, tBindings] = tenantClause(tenantId);
-  const now = Math.floor(Date.now() / 1000);
-  const { results } = await c.env.DB.prepare(
-    `SELECT g.id, g.name, g.slug, g.description, g.is_public, g.banner_photo_id, p.r2_key AS banner_r2_key,
-            g.event_date, g.expires_at, g.created_at
-     FROM galleries g
-     LEFT JOIN photos p ON p.id = g.banner_photo_id
-     WHERE g.deleted_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > ?)${tSql}
-     ORDER BY g.created_at DESC`
-  ).bind(now, ...tBindings).all<{ id: string; name: string; slug: string; description: string | null; is_public: number; banner_photo_id: string | null; banner_r2_key: string | null; event_date: number | null; expires_at: number | null; created_at: number }>();
-
-  return c.json({ galleries: results });
+  const galleries = await listPublicGalleries(svc(c), c.get("tenantId"));
+  return c.json({ galleries });
 });
 
 // ------------------------------------------------------------------
@@ -30,25 +39,12 @@ galleryRoutes.get("/", async (c) => {
 // ------------------------------------------------------------------
 galleryRoutes.get("/:slug", async (c) => {
   const { slug } = c.req.param();
-  const [tSql, tBindings] = tenantClause(c.get("tenantId"));
-  const gallery = await c.env.DB.prepare(
-    `SELECT g.id, g.name, g.slug, g.description, g.is_public, g.banner_photo_id, p.r2_key AS banner_r2_key,
-            g.event_date, g.expires_at, g.created_at
-     FROM galleries g
-     LEFT JOIN photos p ON p.id = g.banner_photo_id
-     WHERE g.slug = ? AND g.deleted_at IS NULL${tSql}`
-  )
-    .bind(slug, ...tBindings)
-    .first<{ id: string; name: string; slug: string; description: string | null; is_public: number; banner_photo_id: string | null; banner_r2_key: string | null; event_date: number | null; expires_at: number | null; created_at: number }>();
-
-  if (!gallery) return c.json({ error: "Gallery not found" }, 404);
-
-  const now = Math.floor(Date.now() / 1000);
-  if (gallery.expires_at && gallery.expires_at <= now) {
-    return c.json({ error: "This gallery has expired" }, 410);
+  try {
+    const gallery = await getPublicGallery(svc(c), slug, c.get("tenantId"));
+    return c.json({ gallery });
+  } catch (err) {
+    return mapErr(c, err);
   }
-
-  return c.json({ gallery });
 });
 
 // ------------------------------------------------------------------
@@ -56,61 +52,25 @@ galleryRoutes.get("/:slug", async (c) => {
 // ------------------------------------------------------------------
 galleryRoutes.get("/:slug/export", requireViewer as any, async (c) => {
   const { slug } = c.req.param();
-  const [tSql, tBindings] = tenantClause(c.get("tenantId"));
-
-  const gallery = await c.env.DB.prepare(
-    `SELECT id, name FROM galleries WHERE slug = ? AND deleted_at IS NULL${tSql}`
-  )
-    .bind(slug, ...tBindings)
-    .first<{ id: string; name: string }>();
-  if (!gallery) return c.json({ error: "Gallery not found" }, 404);
-
-  const { results: photoRows } = await c.env.DB.prepare(
-    "SELECT id, r2_key, original_name FROM photos WHERE gallery_id = ? ORDER BY sort_order ASC, uploaded_at ASC"
-  )
-    .bind(gallery.id)
-    .all<{ id: string; r2_key: string; original_name: string }>();
-
-  const photoList = photoRows.map((p) => ({
-    name: p.original_name,
-    url: `/api/images/${p.r2_key}?variant=full`,
-  }));
-
-  return c.json({ galleryName: gallery.name, photos: photoList });
+  try {
+    const payload = await exportGallery(svc(c), slug, c.get("tenantId"));
+    return c.json(payload);
+  } catch (err) {
+    return mapErr(c, err);
+  }
 });
 
 // ------------------------------------------------------------------
 // Protected: fetch a single photo by id (viewer JWT required)
-// Useful for deep-linking to a photo that may not be in the first page.
 // ------------------------------------------------------------------
 galleryRoutes.get("/:slug/photos/:photoId", requireViewer as any, async (c) => {
   const { slug, photoId } = c.req.param();
-  const [tSql, tBindings] = tenantClause(c.get("tenantId"));
-
-  const gallery = await c.env.DB.prepare(
-    `SELECT id FROM galleries WHERE slug = ? AND deleted_at IS NULL${tSql}`
-  )
-    .bind(slug, ...tBindings)
-    .first<{ id: string }>();
-
-  if (!gallery) return c.json({ error: "Gallery not found" }, 404);
-
-  const photo = await c.env.DB.prepare(
-    "SELECT id, r2_key, original_name, size, uploaded_at, sort_order FROM photos WHERE gallery_id = ? AND id = ?"
-  )
-    .bind(gallery.id, photoId)
-    .first<{
-      id: string;
-      r2_key: string;
-      original_name: string;
-      size: number;
-      uploaded_at: number;
-      sort_order: number;
-    }>();
-
-  if (!photo) return c.json({ error: "Photo not found" }, 404);
-
-  return c.json({ photo });
+  try {
+    const photo = await getPhotoById(svc(c), slug, photoId, c.get("tenantId"));
+    return c.json({ photo });
+  } catch (err) {
+    return mapErr(c, err);
+  }
 });
 
 // ------------------------------------------------------------------
@@ -118,50 +78,24 @@ galleryRoutes.get("/:slug/photos/:photoId", requireViewer as any, async (c) => {
 // ------------------------------------------------------------------
 galleryRoutes.get("/:slug/photos", requireViewer as any, async (c) => {
   const { slug } = c.req.param();
-  const [tSql, tBindings] = tenantClause(c.get("tenantId"));
   const cursor = c.req.query("cursor");
-  const limit = Math.min(Number(c.req.query("limit") ?? 50), 100);
+  const limit = Number(c.req.query("limit") ?? 50);
 
-  const gallery = await c.env.DB.prepare(
-    `SELECT id FROM galleries WHERE slug = ? AND deleted_at IS NULL${tSql}`
-  )
-    .bind(slug, ...tBindings)
-    .first<{ id: string }>();
-
-  if (!gallery) return c.json({ error: "Gallery not found" }, 404);
-
-  // Build paginated query using OFFSET to handle duplicate sort_order values (batch uploads)
-  const offset = cursor ? Number(cursor) : 0;
-
-  const [{ results }, countRow] = await Promise.all([
-    c.env.DB.prepare(
-      "SELECT id, r2_key, original_name, size, uploaded_at, sort_order FROM photos WHERE gallery_id = ? ORDER BY sort_order ASC, id ASC LIMIT ? OFFSET ?"
-    )
-      .bind(gallery.id, limit, offset)
-      .all<{
-        id: string;
-        r2_key: string;
-        original_name: string;
-        size: number;
-        uploaded_at: number;
-        sort_order: number;
-      }>(),
-    c.env.DB.prepare("SELECT COUNT(*) AS total FROM photos WHERE gallery_id = ?")
-      .bind(gallery.id)
-      .first<{ total: number }>(),
-  ]);
-
-  const nextCursor =
-    offset + results.length < (countRow?.total ?? 0)
-      ? String(offset + results.length)
-      : null;
-
-  // `authMethod` is surfaced for client-side analytics (e.g. Google Analytics
-  // custom dimension). Set by `requireViewer`; one of public | password |
-  // magic_link | admin_bypass.
-  const authMethod = (c.get as (k: string) => unknown)("viewerAuthMethod") as
-    | string
-    | undefined;
-
-  return c.json({ photos: results, nextCursor, total: countRow?.total ?? 0, authMethod });
+  try {
+    const page = await listPhotos(svc(c), {
+      slug,
+      tenantId: c.get("tenantId"),
+      cursor,
+      limit,
+    });
+    // Surface auth method for client-side analytics (e.g. Google Analytics
+    // custom dimension). Set by `requireViewer`; one of public | password |
+    // magic_link | admin_bypass.
+    const authMethod = (c.get as (k: string) => unknown)("viewerAuthMethod") as
+      | string
+      | undefined;
+    return c.json({ ...page, authMethod });
+  } catch (err) {
+    return mapErr(c, err);
+  }
 });

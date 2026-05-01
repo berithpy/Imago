@@ -1,5 +1,7 @@
 import { Hono } from "hono";
 import { Bindings } from "../index";
+import { getDb } from "../lib/db";
+import { getGalleryPreview } from "../services/galleryService";
 
 export const ogPreviewRoutes = new Hono<{ Bindings: Bindings }>();
 
@@ -33,6 +35,7 @@ type GalleryPreview = {
   has_photos: number;
   tenant_name: string;
 };
+// (Type retained for parity with prior API; populated from service struct below.)
 
 // ------------------------------------------------------------------
 // SPA fallthrough handler. Matches every non-/api request that the
@@ -61,25 +64,27 @@ ogPreviewRoutes.all("*", async (c) => {
     return assetResponse;
   }
 
-  const now = Math.floor(Date.now() / 1000);
-  const gallery = await c.env.DB.prepare(
-    `SELECT g.id, g.name, g.description, g.is_public, g.share_preview_enabled,
-            g.banner_photo_id, t.name AS tenant_name,
-            EXISTS(SELECT 1 FROM photos p WHERE p.gallery_id = g.id) AS has_photos
-     FROM galleries g
-     JOIN tenants t ON t.id = g.tenant_id
-     WHERE g.slug = ?
-       AND t.slug = ?
-       AND t.deleted_at IS NULL
-       AND g.deleted_at IS NULL
-       AND (g.expires_at IS NULL OR g.expires_at > ?)`
-  )
-    .bind(gallerySlug, tenantSlug, now)
-    .first<GalleryPreview>();
-
-  if (!gallery) return assetResponse;
+  const preview = await getGalleryPreview(
+    { env: c.env, db: getDb(c.env), actor: null },
+    tenantSlug,
+    gallerySlug
+  );
+  if (!preview) return assetResponse;
   // Private galleries without explicit opt-in stay generic — no leak.
-  if (!gallery.share_preview_enabled) return assetResponse;
+  if (!preview.sharePreviewEnabled) return assetResponse;
+
+  // Re-shape into the legacy snake_case struct used by the rest of the
+  // handler so the HTML rewriting code below remains untouched.
+  const gallery: GalleryPreview = {
+    id: preview.id,
+    name: preview.name,
+    description: preview.description,
+    is_public: preview.isPublic ? 1 : 0,
+    share_preview_enabled: preview.sharePreviewEnabled ? 1 : 0,
+    banner_photo_id: preview.bannerPhotoId,
+    has_photos: preview.hasPhotos ? 1 : 0,
+    tenant_name: preview.tenantName,
+  };
 
   const appUrl = (c.env.APP_URL ?? `${url.protocol}//${url.host}`).replace(/\/$/, "");
   const canonicalUrl = `${appUrl}/${tenantSlug}/${gallerySlug}`;
