@@ -9,3 +9,8 @@ gallery list should show the thumbnail on a square, right now you identify it by
 ## Gallery management thumbnail
 
 We should add support to mark multiple pictures so we can run operations on the seceted ones only, so as part of this work, we should, update the "delete" button to be square, move the star next to the delete button, and add a new button on the top left corner of the thumbnail to select that picture, we should also add a select all and select none button, and also consider keyboard navigation for this so we should be able to move a cursor between the pictures
+
+# Gallery management
+
+We need to add a confirmation modal that works when we call it, currently when we delete a picture, try to hide an album, an alert tells us to confirm the action, instead of the alert we should use the modal
+And we should also add the confirmation to the "public/private" button, also check which password we use when making it private, maybe it should ask for a new password because we don't really store it in a way we can read
