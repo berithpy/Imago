@@ -14,7 +14,10 @@
     "binding": "ASSETS",
     "directory": "./dist/client",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*"],
+    // Worker handles all requests so it can inject per-gallery Open Graph
+    // meta tags into the SPA index.html. The worker proxies non-matching
+    // requests back to ASSETS.fetch unchanged.
+    "run_worker_first": true,
   },
   "observability": {
     "enabled": true,
@@ -55,6 +58,9 @@
    * https://developers.cloudflare.com/workers/configuration/secrets/
    */
   // vars are set via .dev.vars (local) and .prod.vars + npm run secrets:push (production)
+  "vars": {
+    "FROM_EMAIL": "auth-imago@berith.moe",
+  },
   /**
    * Service Bindings (communicate between multiple Workers)
    * https://developers.cloudflare.com/workers/wrangler/configuration/#service-bindings

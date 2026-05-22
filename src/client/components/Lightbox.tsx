@@ -1,101 +1,65 @@
-import type { MouseEvent } from "react";
+import { useEffect } from "react";
+import { shareUrl } from "@/client/lib/share";
 
-interface LightboxProps {
+type Props = {
   r2Key: string;
   alt: string;
+  filename: string;
   onClose: () => void;
-  filename?: string;
-}
+};
 
-export function Lightbox({ r2Key, alt, onClose, filename }: LightboxProps) {
-  async function handleDownload(e: MouseEvent) {
-    e.stopPropagation();
-    const res = await fetch(`/api/images/${r2Key}?variant=full`, { credentials: "include" });
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename ?? r2Key.split("/").pop() ?? "photo";
-    a.click();
-    URL.revokeObjectURL(url);
+export function Lightbox({ r2Key, alt, filename, onClose }: Props) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [onClose]);
+
+  async function handleShare() {
+    await shareUrl(filename, window.location.href);
   }
 
   return (
     <div
+      className="fixed inset-0 z-50 bg-black/95 flex flex-col items-center justify-center p-4"
       onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.92)",
-        display: "flex",
-        flexDirection: "column",
-        zIndex: 1000,
-      }}
     >
-      {/* Toolbar */}
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "10px 16px",
-          borderBottom: "1px solid rgba(255,255,255,0.12)",
-          background: "rgba(0,0,0,0.6)",
-          backdropFilter: "blur(6px)",
-          flexShrink: 0,
-        }}
-      >
+      <div className="absolute top-3 right-3 flex gap-2 z-10">
         <button
-          onClick={handleDownload}
-          aria-label="Download photo"
-          style={{
-            background: "rgba(255,255,255,0.1)",
-            border: "1px solid rgba(255,255,255,0.3)",
-            borderRadius: 6,
-            color: "white",
-            fontFamily: "'Courier New', Courier, monospace",
-            fontSize: "0.85rem",
-            padding: "6px 18px",
-            cursor: "pointer",
-          }}
+          onClick={(e) => { e.stopPropagation(); void handleShare(); }}
+          className="px-3 py-1.5 bg-neutral-900/80 border border-neutral-800 rounded-lg text-neutral-100 text-sm cursor-pointer"
         >
-          ⬇ Download
+          Share
         </button>
+        <a
+          href={`/api/images/${r2Key}?variant=full`}
+          download={filename}
+          onClick={(e) => e.stopPropagation()}
+          className="px-3 py-1.5 bg-neutral-900/80 border border-neutral-800 rounded-lg text-neutral-100 text-sm"
+        >
+          Download
+        </a>
         <button
           onClick={onClose}
           aria-label="Close"
-          style={{
-            background: "none",
-            border: "none",
-            color: "white",
-            fontSize: "1.5rem",
-            lineHeight: 1,
-            cursor: "pointer",
-            padding: "4px 8px",
-          }}
+          className="px-3 py-1.5 bg-neutral-900/80 border border-neutral-800 rounded-lg text-neutral-100 text-sm cursor-pointer"
         >
-          ✕
+          Close
         </button>
       </div>
-      {/* Image area */}
-      <div
-        style={{
-          flex: 1,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: 24,
-          overflow: "hidden",
-        }}
-      >
-        <img
-          src={`/api/images/${r2Key}?variant=preview`}
-          alt={alt}
-          style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
-          onClick={(e) => e.stopPropagation()}
-        />
-      </div>
+
+      <img
+        src={`/api/images/${r2Key}?variant=full`}
+        alt={alt}
+        onClick={(e) => e.stopPropagation()}
+        className="max-w-full max-h-full object-contain"
+      />
     </div>
   );
 }

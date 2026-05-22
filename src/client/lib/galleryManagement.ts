@@ -11,6 +11,7 @@ export type Gallery = {
   name: string;
   slug: string;
   is_public: number;
+  share_preview_enabled: number;
   banner_photo_id: string | null;
   banner_r2_key: string | null;
   event_date: number | null;
@@ -36,4 +37,11 @@ export function formatDate(unix: number): string {
     month: "long",
     day: "numeric",
   });
+}
+
+/** Human-readable byte size (B / KB / MB) */
+export function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

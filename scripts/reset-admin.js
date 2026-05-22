@@ -20,7 +20,7 @@ import { resolve } from "path";
 const args = process.argv.slice(2);
 const flag = (name) => {
   const i = args.indexOf(name);
-  return i !== -1 ? args[i + 1] ?? null : null;
+  return i !== -1 ? (args[i + 1] ?? null) : null;
 };
 
 const baseURL = flag("--url") ?? "http://localhost:8787";
@@ -42,9 +42,9 @@ if (!resetSecret) {
 if (!resetSecret) {
   console.error(
     "Could not find ADMIN_RESET_SECRET.\n" +
-    "  • Run from the project root where .dev.vars exists, or\n" +
-    "  • Pass --secret <value>, or\n" +
-    "  • Set the ADMIN_RESET_SECRET environment variable."
+      "  • Run from the project root where .dev.vars exists, or\n" +
+      "  • Pass --secret <value>, or\n" +
+      "  • Set the ADMIN_RESET_SECRET environment variable.",
   );
   process.exit(1);
 }
@@ -58,8 +58,8 @@ const ask = (q) => new Promise((res) => rl.question(q, res));
 console.log(`\nAdmin account recovery — target: ${baseURL}`);
 console.log("The existing admin account will be deleted and recreated.\n");
 
-const name     = (await ask("New admin name:     ")).trim();
-const email    = (await ask("New admin email:    ")).trim();
+const name = (await ask("New admin name:     ")).trim();
+const email = (await ask("New admin email:    ")).trim();
 const password = (await ask("New admin password: ")).trim();
 rl.close();
 
@@ -86,7 +86,9 @@ try {
 
 if (!wipeRes.ok) {
   const body = await wipeRes.json().catch(() => ({}));
-  console.error(`Recovery request failed (${wipeRes.status}): ${body.error ?? "unknown error"}`);
+  console.error(
+    `Recovery request failed (${wipeRes.status}): ${body.error ?? "unknown error"}`,
+  );
   process.exit(1);
 }
 
@@ -94,7 +96,7 @@ if (!wipeRes.ok) {
 // Step 2 — create new admin account via /setup
 // ---------------------------------------------------------------------------
 console.log("Creating new admin account…");
-const setupRes = await fetch(`${baseURL}/api/admin/setup`, {
+const setupRes = await fetch(`${baseURL}/api/tenant/setup`, {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({ name, email, password }),
@@ -102,13 +104,15 @@ const setupRes = await fetch(`${baseURL}/api/admin/setup`, {
 
 if (!setupRes.ok) {
   const body = await setupRes.json().catch(() => ({}));
-  console.error(`Setup failed (${setupRes.status}): ${body.error ?? "unknown error"}`);
+  console.error(
+    `Setup failed (${setupRes.status}): ${body.error ?? "unknown error"}`,
+  );
   process.exit(1);
 }
 
 const loginURL = baseURL.includes("localhost")
-  ? baseURL.replace("8787", "5173") + "/admin/login"
-  : baseURL + "/admin/login";
+  ? baseURL.replace("8787", "5173") + "/login"
+  : baseURL + "/login";
 
 console.log(`\n✓ Admin account reset successfully!`);
 console.log(`  Email:    ${email}`);

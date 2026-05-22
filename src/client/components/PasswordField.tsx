@@ -1,45 +1,21 @@
+import { useState } from "react";
 import { generatePassword } from "@/client/lib/generatePassword";
-
-const baseInputStyle: React.CSSProperties = {
-  flex: 1,
-  minWidth: 0,
-  padding: "8px 12px",
-  background: "var(--color-bg)",
-  border: "1px solid var(--color-border)",
-  borderRadius: "var(--radius)",
-  color: "var(--color-text)",
-  fontSize: "0.9rem",
-  outline: "none",
-};
-
-const baseButtonStyle: React.CSSProperties = {
-  padding: "8px 12px",
-  background: "none",
-  border: "1px solid var(--color-border)",
-  borderRadius: "var(--radius)",
-  color: "var(--color-text-muted)",
-  fontSize: "0.85rem",
-  cursor: "pointer",
-  whiteSpace: "nowrap",
-  flexShrink: 0,
-};
 
 type Props = {
   value: string;
-  onChange: (value: string) => void;
+  onChange: (next: string) => void;
   placeholder?: string;
-  /** Mark the input as required within a parent <form> */
   required?: boolean;
-  /** Show the 🎲 Generate button (useful on create) */
   showGenerate?: boolean;
-  /** When provided, renders a standalone action button next to the input */
   onAction?: () => void;
-  actionLabel?: string;
-  actionLoadingLabel?: string;
-  actionDoneLabel?: string;
   actionLoading?: boolean;
   actionDone?: boolean;
 };
+
+const inputClass =
+  "flex-1 min-w-0 px-3.5 py-2.5 bg-neutral-950 border border-neutral-800 rounded-lg text-neutral-100 text-sm outline-none";
+const buttonClass =
+  "px-4 py-2.5 bg-transparent border border-neutral-800 rounded-lg text-neutral-500 text-sm cursor-pointer disabled:opacity-50";
 
 export function PasswordField({
   value,
@@ -48,52 +24,47 @@ export function PasswordField({
   required,
   showGenerate,
   onAction,
-  actionLabel = "Set password",
-  actionLoadingLabel = "Saving…",
-  actionDoneLabel = "✓ Updated!",
   actionLoading,
   actionDone,
 }: Props) {
+  const [reveal, setReveal] = useState(false);
+
   return (
-    <div style={{ display: "flex", gap: 8 }}>
+    <div className="flex flex-wrap gap-2">
       <input
-        type="text"
+        type={reveal ? "text" : "password"}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         required={required}
-        autoComplete="new-password"
-        style={baseInputStyle}
+        className={inputClass}
       />
-
+      <button
+        type="button"
+        onClick={() => setReveal((v) => !v)}
+        className={buttonClass}
+        title={reveal ? "Hide" : "Reveal"}
+      >
+        {reveal ? "Hide" : "Show"}
+      </button>
       {showGenerate && (
         <button
           type="button"
           onClick={() => onChange(generatePassword())}
-          title="Generate a random password"
-          style={baseButtonStyle}
+          className={buttonClass}
+          title="Generate password"
         >
-          🎲 Generate
+          Generate
         </button>
       )}
-
       {onAction && (
         <button
           type="button"
-          onClick={() => onAction()}
-          disabled={actionLoading || !value}
-          style={{
-            ...baseButtonStyle,
-            padding: "8px 16px",
-            background: actionDone ? "var(--color-accent)" : "none",
-            border: `1px solid ${actionDone ? "var(--color-accent)" : "var(--color-border)"}`,
-            color: actionDone ? "#0f0f0f" : "var(--color-text-muted)",
-            fontWeight: actionDone ? 600 : 400,
-            cursor: actionLoading || !value ? "not-allowed" : "pointer",
-            transition: "background 0.2s, color 0.2s, border-color 0.2s",
-          }}
+          onClick={onAction}
+          disabled={actionLoading}
+          className="px-4 py-2.5 bg-amber-400 border-0 rounded-lg text-neutral-950 text-sm font-semibold cursor-pointer disabled:opacity-60"
         >
-          {actionDone ? actionDoneLabel : actionLoading ? actionLoadingLabel : actionLabel}
+          {actionDone ? "Saved!" : actionLoading ? "Saving..." : "Save"}
         </button>
       )}
     </div>

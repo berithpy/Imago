@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { accentButtonStyle } from "@/client/components/ui";
+import { useTenant } from "@/client/lib/tenantContext";
 
 type Props = {
   galleryId: string;
@@ -12,6 +12,7 @@ export function GalleryManagementUploadControl({
   onUploadComplete,
   buttonLabel = "+ Upload photos",
 }: Props) {
+  const { apiBase } = useTenant();
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -27,7 +28,7 @@ export function GalleryManagementUploadControl({
         setUploadProgress(`Uploading ${i + 1} / ${files.length}: ${file.name}`);
         const fd = new FormData();
         fd.append("file", file);
-        await fetch(`/api/admin/galleries/${galleryId}/photos`, {
+        await fetch(`${apiBase}/admin/galleries/${galleryId}/photos`, {
           method: "POST",
           credentials: "include",
           body: fd,
@@ -52,36 +53,18 @@ export function GalleryManagementUploadControl({
         multiple
         onChange={handleUpload}
         disabled={uploading}
-        style={{ display: "none" }}
+        className="hidden"
         id={inputId}
       />
       <label
         htmlFor={inputId}
-        style={{
-          ...accentButtonStyle,
-          cursor: uploading ? "not-allowed" : "pointer",
-          opacity: uploading ? 0.6 : 1,
-          whiteSpace: "nowrap",
-        }}
+        className={`inline-block px-4 py-2 bg-amber-400 border-0 rounded-lg text-neutral-950 font-semibold text-sm whitespace-nowrap ${uploading ? "opacity-60 cursor-not-allowed" : "cursor-pointer"
+          }`}
       >
         {uploading ? uploadProgress : buttonLabel}
       </label>
       {uploading && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: 24,
-            right: 24,
-            background: "var(--color-surface)",
-            border: "1px solid var(--color-border)",
-            borderRadius: "var(--radius)",
-            padding: "14px 20px",
-            fontSize: "0.9rem",
-            color: "var(--color-accent)",
-            boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
-            zIndex: 50,
-          }}
-        >
+        <div className="fixed bottom-6 right-6 z-50 px-5 py-3.5 bg-neutral-900 border border-neutral-800 rounded-lg text-sm text-amber-400 shadow-[0_4px_16px_rgba(0,0,0,0.4)]">
           {uploadProgress}
         </div>
       )}

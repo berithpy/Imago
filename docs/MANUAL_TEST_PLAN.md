@@ -20,7 +20,6 @@ Run the suite in both environments when possible.
 npm install
 npm run setup:dev
 npm run db:migrate:local
-npm run worker:dev
 npm run dev
 ```
 
@@ -46,18 +45,21 @@ Prepare or confirm the following before starting:
 
 | Label | Description |
 |---|---|
-| Admin email | The real admin email stored in the app |
-| Non-admin email | A second email that is not the admin account |
+| Admin email | The real admin email stored in the app (must be a member of the `imago` platform org with role `imago_operator`) |
+| Tenant admin email | An email that is a tenant admin but not super-admin |
+| Non-admin email | A second email that is not any kind of admin account |
 | Whitelisted viewer email | An email added to a private gallery's allow-list |
 | Non-whitelisted viewer email | An email not added to that gallery |
-| Private gallery | A gallery with `is_public = 0` and a known password |
-| Public gallery | A gallery with `is_public = 1` |
+| Tenant slug | The slug of a known tenant, e.g. `demo` |
+| Private gallery | A gallery with `is_public = 0` and a known password, inside the test tenant |
+| Public gallery | A gallery with `is_public = 1`, inside the test tenant |
 | Gallery password | Known valid password for the private gallery |
 
-Suggested gallery fixtures:
+Suggested fixtures:
 
-- `private-gallery` for password + allow-list checks
-- `public-gallery` for anonymous access checks
+- Tenant: `demo`
+- `demo/private-gallery` for password + allow-list checks
+- `demo/public-gallery` for anonymous access checks
 
 ---
 
@@ -87,10 +89,69 @@ These are the minimum cases to run before any deploy.
 | S6 | Public gallery loads without login prompt | Yes | Yes |
 | S7 | Auth pages share the same card shell and work on mobile width | Yes | Yes |
 | S8 | Magic-link URL host matches environment | Yes | Yes |
+| S9 | Operator dashboard loads at `/operator` for super-admin user | Yes | Yes |
+| S10 | Non-super-admin admin user redirected away from `/operator` | Yes | Yes |
+| S11 | Tenant gallery index loads at `/<tenantSlug>` | Yes | Yes |
+| S12 | `/login` accepts super-admin email → magic link → `/operator` | Yes | Yes |
+| S13 | `/login` accepts tenant-admin email → magic link → `/<tenantSlug>/manage` | Yes | Yes |
+| S14 | `/login` with multi-tenant user shows tenant chooser at `/login/resolve` | Yes | Yes |
 
 ---
 
 ## Full Manual Cases
+
+### MT-00 Universal Login (`/login`)
+
+#### A. Super-admin via universal login
+
+1. Open `/login` while logged out.
+2. Enter the super-admin email, submit.
+3. Open the magic link from the inbox.
+
+**Expected:**
+
+- redirect lands on `/login/resolve`, then auto-redirects to `/operator`
+- session cookie is set; `/operator` shows the operator dashboard
+
+#### B. Single-tenant admin via universal login
+
+1. Open `/login` as a tenant admin who is a member of exactly one tenant.
+2. Enter their email, submit, click the magic link.
+
+**Expected:**
+
+- `/login/resolve` auto-redirects to `/<tenantSlug>/manage`
+
+#### C. Multi-tenant admin chooser
+
+1. Make a user a member of two tenants (insert two `member` rows for distinct organizations).
+2. Sign that user in via `/login`.
+3. After clicking the magic link, observe `/login/resolve`.
+
+**Expected:**
+
+- a chooser screen lists each tenant by name
+- selecting one navigates to `/<chosenSlug>/manage`
+
+#### D. Unknown email — no enumeration
+
+1. Open `/login`, enter an email that does not exist in `user`.
+2. Submit.
+
+**Expected:**
+
+- response is `200 { ok: true }` with the same confirmation UI as a real send
+- no email is sent, no error reveals account existence
+
+#### E. Known user with no role — sign-out + error
+
+1. Manually create a user row (no super-admin flag, no `member` row).
+2. Trick the magic link by signing them in via better-auth directly (or temporarily add then remove a membership while a session is active), then visit `/login/resolve`.
+
+**Expected:**
+
+- `/login/resolve` calls sign-out and redirects to `/login?error=not-authorized`
+- the red error banner is visible above the login card
 
 ### MT-01 Admin setup on a fresh environment
 
@@ -100,13 +161,13 @@ Preconditions:
 - no admin user exists
 
 Steps:
-1. Open `/admin/setup`.
+1. Open `/operator/setup`.
 2. Enter name, admin email, password, and optional recovery email.
 3. Submit the form.
 
 Expected:
 - success state is shown
-- redirect to `/admin/login` happens automatically
+- redirect to `/login` happens automatically
 - repeating setup later should fail with a clear error or refusal
 
 ### MT-02 Admin login with valid admin email
@@ -116,7 +177,7 @@ Preconditions:
 - inbox is accessible
 
 Steps:
-1. Open `/admin/login`.
+1. Open `/login`.
 2. Enter the admin email.
 3. Submit the form.
 4. Confirm the `Check your inbox` state appears.
@@ -125,13 +186,13 @@ Steps:
 Expected:
 - confirmation UI appears immediately after submit
 - email arrives
-- clicking the link lands on `/admin`
-- admin dashboard loads successfully
+- clicking the link lands on `/login/resolve` then auto-redirects (super-admin → `/operator`; single-tenant admin → `/<tenantSlug>/manage`)
+- destination dashboard loads successfully
 
 ### MT-03 Admin login with non-admin email
 
 Steps:
-1. Open `/admin/login`.
+1. Open `/login`.
 2. Enter a non-admin email.
 3. Submit the form.
 
@@ -144,11 +205,11 @@ Expected:
 ### MT-04 Gallery magic link with whitelisted email
 
 Preconditions:
-- private gallery exists
+- private gallery exists inside the test tenant
 - test email is on the gallery allow-list
 
 Steps:
-1. Open `/gallery/<private-slug>` in a fresh session.
+1. Open `/<tenantSlug>/<private-slug>` in a fresh session.
 2. Confirm the login page appears.
 3. Enter the whitelisted email.
 4. Submit the form.
@@ -157,13 +218,13 @@ Steps:
 Expected:
 - confirmation UI appears
 - email arrives
-- clicking the link lands on `/gallery/<private-slug>`
+- clicking the link lands on `/<tenantSlug>/<private-slug>`
 - gallery content loads
 
 ### MT-05 Gallery magic link with non-whitelisted email
 
 Steps:
-1. Open `/gallery/<private-slug>`.
+1. Open `/<tenantSlug>/<private-slug>`.
 2. Enter an email not on the allow-list.
 3. Submit the form.
 
@@ -192,20 +253,20 @@ Expected:
 ### MT-07 Gallery password login with correct password
 
 Steps:
-1. Open `/gallery/<private-slug>`.
+1. Open `/<tenantSlug>/<private-slug>`.
 2. Choose `Use a password instead`.
 3. Enter the correct gallery password.
 4. Submit.
 
 Expected:
-- redirect to `/gallery/<private-slug>`
+- redirect to `/<tenantSlug>/<private-slug>`
 - gallery content loads
 - refresh still works while the viewer cookie remains valid
 
 ### MT-08 Gallery password login with wrong password
 
 Steps:
-1. Open `/gallery/<private-slug>`.
+1. Open `/<tenantSlug>/<private-slug>`.
 2. Switch to password mode.
 3. Enter an invalid password.
 4. Submit.
@@ -218,7 +279,7 @@ Expected:
 ### MT-09 Public gallery access
 
 Steps:
-1. Open `/gallery/<public-slug>` in a fresh session.
+1. Open `/<tenantSlug>/<public-slug>` in a fresh session.
 
 Expected:
 - gallery loads directly
@@ -229,12 +290,12 @@ Expected:
 This is not called out in Stage 9d, but it is a real auth path and should be covered manually.
 
 Preconditions:
-- admin session is active
-- private gallery exists
+- tenant admin session is active for the test tenant
+- private gallery exists inside that tenant
 
 Steps:
-1. Stay logged in as admin.
-2. Open `/gallery/<private-slug>` in the same browser profile.
+1. Stay logged in as the tenant admin.
+2. Open `/<tenantSlug>/<private-slug>` in the same browser profile.
 3. Confirm the `Enter as admin (skip password)` action is visible.
 4. Use it.
 
@@ -267,9 +328,10 @@ Expected:
 
 Pages:
 
-- `/admin/setup`
-- `/admin/login`
-- `/gallery/<private-slug>` login page
+- `/operator/setup`
+- `/login`
+- `/<tenantSlug>/login`
+- `/<tenantSlug>/<private-slug>/login`
 
 Check:
 
@@ -289,7 +351,7 @@ Viewport:
 - `390 x 844` or similar mobile width
 
 Steps:
-1. Repeat quick checks on `/admin/login` and `/gallery/<private-slug>`.
+1. Repeat quick checks on `/login` and `/<tenantSlug>/<private-slug>`.
 2. Trigger at least one validation or auth error.
 
 Expected:
@@ -341,5 +403,110 @@ For the shortest useful pass:
 8. MT-11 or MT-12
 9. MT-13
 10. MT-14
+11. MT-15
+12. MT-16
 
-Run MT-01 only on fresh environments. Run MT-06 when auth or better-auth configuration changes. Run MT-10 whenever admin session behavior changes.
+Run MT-01 only on fresh environments. Run MT-06 when auth or better-auth configuration changes. Run MT-10 whenever admin session behavior changes. Run MT-15 through MT-20 whenever super-admin routes or the tenants API changes.
+
+---
+
+## Super-Admin Cases
+
+### MT-15 Super-admin dashboard access control
+
+Preconditions:
+- a super-admin user exists (member of the `imago` platform org with role `imago_operator`)
+- a separate tenant-admin user exists (no super-admin flag)
+
+Steps:
+1. Log in as the super-admin via `/login`. Open `/operator`.
+2. Log out. Log in as the tenant-admin via `/login`. Open `/operator`.
+3. Open `/operator` with no session at all (fresh incognito).
+
+Expected:
+- Step 1: super-admin dashboard loads with Tenants and Users sections
+- Step 2: redirected to `/login` (403 from the API)
+- Step 3: redirected to `/login` (no session)
+
+### MT-16 Create tenant with slug availability
+
+Preconditions:
+- logged in as super-admin
+- `/operator` dashboard is open
+
+Steps:
+1. Type a name into the New Tenant form. Confirm the slug field is auto-populated.
+2. Clear the slug and type one that already exists. Confirm the red "Already in use" indicator appears and the Create button is disabled.
+3. Type an invalid slug (e.g. `My Slug`). Confirm the red "Only lowercase letters…" indicator appears.
+4. Type a valid unused slug. Confirm the green checkmark appears.
+5. Submit the form.
+
+Expected:
+- slug availability check fires after a ~400 ms debounce
+- existing slug blocks submit
+- after successful create, the new tenant appears in the active tenant list
+
+### MT-17 Edit tenant name and slug
+
+Preconditions:
+- at least one tenant exists in the list
+
+Steps:
+1. Click **Edit** on a tenant.
+2. Change the name and the slug (use a valid, unused slug).
+3. Click **Save**.
+
+Expected:
+- inline edit fields appear with current values
+- slug indicator validates on change
+- save updates the row in-place without a page reload
+- changed name and slug are reflected immediately
+
+### MT-18 Delete and restore a tenant
+
+Preconditions:
+- a tenant exists that can be safely deleted
+
+Steps:
+1. Click **Delete** on the tenant.
+2. Confirm the two-step prompt appears asking you to type the slug.
+3. Type an incorrect slug. Confirm the Delete button stays disabled.
+4. Type the correct slug. Click **Delete**.
+5. Confirm the tenant disappears from the active list and appears under the "deleted tenants" disclosure.
+6. Expand the disclosure. Click **Restore**.
+
+Expected:
+- delete only proceeds when the slug matches exactly
+- after delete, tenant shows in the deleted section with reduced opacity
+- after restore, tenant moves back to the active list
+
+### MT-19 Act as Tenant navigation
+
+Preconditions:
+- at least one active tenant exists
+- logged in as super-admin
+
+Steps:
+1. On the `/operator` dashboard, click **Open →** next to a tenant.
+
+Expected:
+- browser navigates to `/<tenantSlug>/manage`
+- the tenant admin dashboard loads (same session, no re-login required because the guard only checks session existence)
+
+### MT-20 Users section with tenant filter
+
+Preconditions:
+- at least two tenants exist, each with at least one admin user
+
+Steps:
+1. On `/operator`, scroll to the Users section.
+2. Confirm the table initially shows all users across all tenants.
+3. Select a specific tenant from the dropdown.
+4. Confirm the table updates to show only users belonging to that tenant.
+5. Return to "All tenants".
+
+Expected:
+- table updates without page reload
+- super-admin users are marked with a **SUPER** badge
+- tenant column shows the tenant name and is clickable (navigates to that tenant's dashboard)
+- read-only: no edit or delete controls are present

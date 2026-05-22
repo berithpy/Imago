@@ -1,54 +1,48 @@
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
 }
 
-:root {
-  --color-bg: #0f0f0f;
-  --color-surface: #1a1a1a;
-  --color-border: #2a2a2a;
-  --color-text: #e8e8e8;
-  --color-text-muted: #888;
-  --color-accent: #d4a853;
-  --color-accent-hover: #e0b96a;
-  --color-error: #e05c5c;
-  --radius: 8px;
-  --font: 'Inter', system-ui, -apple-system, sans-serif;
-}
+@layer base {
 
-html,
-body {
-  height: 100%;
-  background: var(--color-bg);
-  color: var(--color-text);
-  font-family: var(--font);
-  font-size: 16px;
-  line-height: 1.5;
-  -webkit-font-smoothing: antialiased;
-}
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
 
-#root {
-  min-height: 100%;
-}
+  html,
+  body {
+    height: 100%;
+    background-color: var(--color-neutral-950);
+    color: var(--color-neutral-100);
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
 
-a {
-  color: var(--color-accent);
-  text-decoration: none;
-}
+  #root {
+    min-height: 100%;
+  }
 
-a:hover {
-  color: var(--color-accent-hover);
-}
+  a {
+    color: var(--color-amber-400);
+    text-decoration: none;
+  }
 
-button {
-  cursor: pointer;
-  font-family: inherit;
-}
+  a:hover {
+    color: var(--color-amber-300);
+  }
 
-input,
-textarea {
-  font-family: inherit;
+  button {
+    cursor: pointer;
+    font-family: inherit;
+  }
+
+  input,
+  textarea {
+    font-family: inherit;
+  }
 }

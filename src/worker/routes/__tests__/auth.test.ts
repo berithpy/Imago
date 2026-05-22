@@ -222,7 +222,7 @@ describe("auth routes", () => {
       expect.objectContaining({
         body: expect.objectContaining({
           email: "recover@example.com",
-          callbackURL: "/admin",
+          callbackURL: "/login/resolve",
         }),
       })
     );

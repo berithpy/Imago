@@ -27,10 +27,7 @@ You may need to set up a cloudflare account and even set your credit card, but t
 ```bash
 npm install
 
-# Terminal 1 - Worker (localhost:8787)
-npm run worker:dev
-
-# Terminal 2 - Vite frontend (localhost:5173, proxies /api to :8787)
+# Starts both the worker (localhost:8787) and Vite frontend (localhost:5173, proxies /api to :8787)
 npm run dev
 ```
 
@@ -56,11 +53,11 @@ We also have cloudflare's ci/CD integration set up, so pushing to the `main` bra
 
 ## Admin
 
-- Visit `/admin/setup` once after deploy to create the admin account
-- Then log in at `/admin`
+- Visit `/operator/setup` once after deploy to create the admin account
+- Then log in at `/login` (universal magic-link login for super-admins and tenant admins)
 - From the dashboard: create galleries, upload photos, manage content
 
 ## Galleries
 
-Each gallery has a unique slug and a viewer password. Share the URL `/gallery/:slug` with clients - they enter the password to view the photos.
+Each gallery has a unique slug and a viewer password. Share the URL `/{tenant}/{gallery}` with clients — they enter the password to view the photos.
 

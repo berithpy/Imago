@@ -122,4 +122,172 @@ describe("image routes", () => {
     expect(res.headers.get("Cache-Control")).toBe("private, max-age=86400");
     expect(await res.text()).toBe("webp-content");
   });
+
+  it("returns 404 when viewer token tenant does not match key prefix", async () => {
+    const tenantA = await harness.seedTenant("tenant-a");
+    const tenantB = await harness.seedTenant("tenant-b");
+    const galleryA = await harness.seedGallery({ slug: "tenant-a-gallery", isPublic: false, tenantId: tenantA.id });
+
+    const loginRes = await harness.request(`/api/t/tenant-a/viewer/gallery/${galleryA.slug}/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ password: galleryA.password }),
+    });
+    expect(loginRes.status).toBe(200);
+
+    const cookie = loginRes.headers.get("set-cookie") ?? "";
+    const key = `${tenantB.id}/galleries/${galleryA.id}/cross-tenant.jpg`;
+    const originalBucket = harness.env.IMAGES_BUCKET;
+    (harness.env as any).IMAGES_BUCKET = {
+      get: async () => ({
+        body: new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode("image"));
+            controller.close();
+          },
+        }),
+        httpEtag: "\"etag\"",
+        writeHttpMetadata(headers: Headers) {
+          headers.set("content-type", "image/jpeg");
+        },
+      }),
+    };
+
+    const res = await harness.request(`/api/images/${encodeURIComponent(key)}?variant=full`, {
+      headers: { cookie },
+    });
+    (harness.env as any).IMAGES_BUCKET = originalBucket;
+
+    expect(res.status).toBe(404);
+  });
+
+  it("serves image when viewer token tenant matches key prefix", async () => {
+    const tenant = await harness.seedTenant("tenant-match");
+    const gallery = await harness.seedGallery({ slug: "tenant-match-gallery", isPublic: false, tenantId: tenant.id });
+
+    const loginRes = await harness.request(`/api/t/tenant-match/viewer/gallery/${gallery.slug}/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ password: gallery.password }),
+    });
+    expect(loginRes.status).toBe(200);
+
+    const cookie = loginRes.headers.get("set-cookie") ?? "";
+    const key = `${tenant.id}/galleries/${gallery.id}/match.jpg`;
+    const originalBucket = harness.env.IMAGES_BUCKET;
+    (harness.env as any).IMAGES_BUCKET = {
+      get: async (requestedKey: string) => {
+        if (requestedKey !== key) return null;
+        return {
+          body: new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode("ok-image"));
+              controller.close();
+            },
+          }),
+          httpEtag: "\"etag\"",
+          writeHttpMetadata(headers: Headers) {
+            headers.set("content-type", "image/jpeg");
+          },
+        };
+      },
+    };
+
+    const res = await harness.request(`/api/images/${encodeURIComponent(key)}?variant=full`, {
+      headers: { cookie },
+    });
+    (harness.env as any).IMAGES_BUCKET = originalBucket;
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("ok-image");
+  });
+
+  it("serves image for a public gallery without any auth", async () => {
+    const tenant = await harness.seedTenant("tenant-pub");
+    const gallery = await harness.seedGallery({ slug: "public-gal", isPublic: true, tenantId: tenant.id });
+
+    const photoId = crypto.randomUUID();
+    const key = `${tenant.id}/galleries/${gallery.id}/${photoId}.jpg`;
+    await harness.runSql(
+      "INSERT INTO photos (id, gallery_id, r2_key, original_name, size, uploaded_at, sort_order) VALUES (?, ?, ?, ?, ?, unixepoch(), ?)",
+      [photoId, gallery.id, key, "p.jpg", 100, 0]
+    );
+
+    const originalBucket = harness.env.IMAGES_BUCKET;
+    (harness.env as any).IMAGES_BUCKET = {
+      get: async (requestedKey: string) => {
+        if (requestedKey !== key) return null;
+        return {
+          body: new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode("public-image"));
+              controller.close();
+            },
+          }),
+          httpEtag: '"etag"',
+          writeHttpMetadata(headers: Headers) {
+            headers.set("content-type", "image/jpeg");
+          },
+        };
+      },
+    };
+
+    const res = await harness.request(`/api/images/${encodeURIComponent(key)}?variant=full`);
+    (harness.env as any).IMAGES_BUCKET = originalBucket;
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("public-image");
+  });
+
+  it("serves image for a public gallery via tenant-scoped route without auth", async () => {
+    const tenant = await harness.seedTenant("tenant-pub2");
+    const gallery = await harness.seedGallery({ slug: "public-gal-2", isPublic: true, tenantId: tenant.id });
+
+    const photoId = crypto.randomUUID();
+    const key = `${tenant.id}/galleries/${gallery.id}/${photoId}.jpg`;
+    await harness.runSql(
+      "INSERT INTO photos (id, gallery_id, r2_key, original_name, size, uploaded_at, sort_order) VALUES (?, ?, ?, ?, ?, unixepoch(), ?)",
+      [photoId, gallery.id, key, "p.jpg", 100, 0]
+    );
+
+    const originalBucket = harness.env.IMAGES_BUCKET;
+    (harness.env as any).IMAGES_BUCKET = {
+      get: async (requestedKey: string) => {
+        if (requestedKey !== key) return null;
+        return {
+          body: new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode("public-tenant"));
+              controller.close();
+            },
+          }),
+          httpEtag: '"etag"',
+          writeHttpMetadata(headers: Headers) {
+            headers.set("content-type", "image/jpeg");
+          },
+        };
+      },
+    };
+
+    const res = await harness.request(`/api/t/tenant-pub2/images/${encodeURIComponent(key)}?variant=full`);
+    (harness.env as any).IMAGES_BUCKET = originalBucket;
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("public-tenant");
+  });
+
+  it("still requires auth for a private gallery photo", async () => {
+    const tenant = await harness.seedTenant("tenant-priv");
+    const gallery = await harness.seedGallery({ slug: "priv-gal", isPublic: false, tenantId: tenant.id });
+
+    const photoId = crypto.randomUUID();
+    const key = `${tenant.id}/galleries/${gallery.id}/${photoId}.jpg`;
+    await harness.runSql(
+      "INSERT INTO photos (id, gallery_id, r2_key, original_name, size, uploaded_at, sort_order) VALUES (?, ?, ?, ?, ?, unixepoch(), ?)",
+      [photoId, gallery.id, key, "p.jpg", 100, 0]
+    );
+
+    const res = await harness.request(`/api/images/${encodeURIComponent(key)}?variant=full`);
+    expect(res.status).toBe(401);
+  });
 });

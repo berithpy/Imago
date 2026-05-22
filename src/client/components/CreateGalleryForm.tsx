@@ -1,8 +1,16 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { FieldError } from "@/client/components/ErrorMessage";
-import { cardStyle, inputStyle, accentButtonStyle } from "@/client/components/ui";
 import { PasswordField } from "@/client/components/PasswordField";
 import { EmailListInput } from "@/client/components/EmailListInput";
+import { useTenant } from "@/client/lib/tenantContext";
+import { Button } from "@/client/components/Button";
+
+const inputClass =
+  "w-full px-4 py-3 bg-neutral-950 border border-neutral-800 rounded-lg text-neutral-100 text-sm outline-none";
+const inputPanelClass =
+  "px-3.5 py-2.5 bg-neutral-950 border border-neutral-800 rounded-lg text-neutral-100 text-sm outline-none";
+const accentBtnClass =
+  "inline-block px-5 py-2.5 bg-amber-400 border-0 rounded-lg text-neutral-950 font-semibold text-sm cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed";
 
 type Props = {
   onCreated: () => void;
@@ -10,6 +18,7 @@ type Props = {
 };
 
 export function CreateGalleryForm({ onCreated, onCancel }: Props) {
+  const { apiBase } = useTenant();
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [password, setPassword] = useState("");
@@ -21,14 +30,42 @@ export function CreateGalleryForm({ onCreated, onCancel }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
+  const [slugStatus, setSlugStatus] = useState<"idle" | "checking" | "available" | "taken" | "reserved" | "invalid">("idle");
+  const slugDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function checkSlug(value: string) {
+    if (!value) { setSlugStatus("idle"); return; }
+    setSlugStatus("checking");
+    if (slugDebounceRef.current) clearTimeout(slugDebounceRef.current);
+    slugDebounceRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`${apiBase}/admin/galleries/check-slug?slug=${encodeURIComponent(value)}`, { credentials: "include" });
+        const data = await res.json() as { valid: boolean; available: boolean; reserved: boolean };
+        if (!data.valid) setSlugStatus("invalid");
+        else if (data.reserved) setSlugStatus("reserved");
+        else if (!data.available) setSlugStatus("taken");
+        else setSlugStatus("available");
+      } catch {
+        setSlugStatus("idle");
+      }
+    }, 400);
+  }
+
   function handleNameChange(v: string) {
     setName(v);
-    setSlug(v.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""));
+    const derived = v.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    setSlug(derived);
+    checkSlug(derived);
+  }
+
+  function handleSlugChange(v: string) {
+    setSlug(v);
+    checkSlug(v);
   }
 
   function handleTogglePublic() {
     setIsPublic((v) => !v);
-    if (!isPublic) setPassword(""); // clear password when switching to public
+    if (!isPublic) setPassword("");
   }
 
   function handleAddEmailToList(email: string) {
@@ -45,7 +82,7 @@ export function CreateGalleryForm({ onCreated, onCancel }: Props) {
     setError(null);
     setCreating(true);
     try {
-      const res = await fetch("/api/admin/galleries", {
+      const res = await fetch(`${apiBase}/admin/galleries`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -64,7 +101,7 @@ export function CreateGalleryForm({ onCreated, onCancel }: Props) {
         if (emailList.length > 0 && data.gallery?.id) {
           await Promise.all(
             emailList.map((email) =>
-              fetch(`/api/admin/galleries/${data.gallery!.id}/allowed-emails`, {
+              fetch(`${apiBase}/admin/galleries/${data.gallery!.id}/allowed-emails`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 credentials: "include",
@@ -82,71 +119,63 @@ export function CreateGalleryForm({ onCreated, onCancel }: Props) {
     }
   }
 
-  const inputPanelStyle: React.CSSProperties = {
-    padding: "8px 12px",
-    background: "var(--color-bg)",
-    border: "1px solid var(--color-border)",
-    borderRadius: "var(--radius)",
-    color: "var(--color-text)",
-    fontSize: "0.9rem",
-    outline: "none",
-  };
+  const slugBorder =
+    slugStatus === "available"
+      ? "border-amber-400"
+      : slugStatus === "taken" || slugStatus === "reserved" || slugStatus === "invalid"
+        ? "border-red-400"
+        : "border-neutral-800";
 
   return (
     <form
       onSubmit={handleSubmit}
-      style={{ ...cardStyle, marginBottom: 24, display: "flex", flexDirection: "column", gap: 12 }}
+      className="bg-neutral-900 border border-neutral-800 rounded-lg px-5 py-4 mb-6 flex flex-col gap-3"
     >
-      <h3 style={{ fontWeight: 600, marginBottom: 4 }}>New Gallery</h3>
+      <h3 className="font-semibold mb-1">New Gallery</h3>
 
       <input
         placeholder="Name"
         value={name}
         onChange={(e) => handleNameChange(e.target.value)}
         required
-        style={inputStyle}
+        className={inputClass}
       />
       <input
         placeholder="Slug (URL)"
         value={slug}
-        onChange={(e) => setSlug(e.target.value)}
+        onChange={(e) => handleSlugChange(e.target.value)}
         required
         pattern="[-a-z0-9]+"
-        style={inputStyle}
+        className={`w-full px-4 py-3 bg-neutral-950 border ${slugBorder} rounded-lg text-neutral-100 text-sm outline-none`}
       />
+      {slugStatus === "checking" && <p className="text-[0.78rem] text-neutral-500 -mt-1">Checking...</p>}
+      {slugStatus === "available" && <p className="text-[0.78rem] text-amber-400 -mt-1">Available</p>}
+      {slugStatus === "taken" && <p className="text-[0.78rem] text-red-400 -mt-1">Already in use</p>}
+      {slugStatus === "reserved" && <p className="text-[0.78rem] text-red-400 -mt-1">Reserved word</p>}
+      {slugStatus === "invalid" && <p className="text-[0.78rem] text-red-400 -mt-1">Only lowercase letters, numbers, dashes</p>}
+
       <input
         placeholder="Description (optional)"
         value={description}
         onChange={(e) => setDescription(e.target.value)}
         autoComplete="off"
-        style={inputStyle}
+        className={inputClass}
       />
 
-      {/* Visibility toggle */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <div className="flex items-center gap-2.5">
         <button
           type="button"
           onClick={handleTogglePublic}
-          style={{
-            padding: "7px 14px",
-            background: isPublic ? "var(--color-accent)" : "none",
-            border: "1px solid var(--color-border)",
-            borderRadius: "var(--radius)",
-            color: isPublic ? "#0f0f0f" : "var(--color-text-muted)",
-            fontSize: "0.85rem",
-            fontWeight: isPublic ? 600 : 400,
-            cursor: "pointer",
-            transition: "background 0.15s, color 0.15s",
-          }}
+          className={`px-4 py-2 border border-neutral-800 rounded-lg text-sm cursor-pointer transition-colors ${isPublic ? "bg-amber-400 text-neutral-950 font-semibold" : "bg-transparent text-neutral-500"
+            }`}
         >
-          {isPublic ? "🌐 Public" : "🔒 Private"}
+          {isPublic ? "Public" : "Private"}
         </button>
-        <span style={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>
+        <span className="text-xs text-neutral-500">
           {isPublic ? "No password required" : "Viewers need a password"}
         </span>
       </div>
 
-      {/* Password — only shown for private galleries */}
       {!isPublic && (
         <PasswordField
           value={password}
@@ -157,29 +186,27 @@ export function CreateGalleryForm({ onCreated, onCancel }: Props) {
         />
       )}
 
-      {/* Date fields */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <label style={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>Event date (optional)</label>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-neutral-500">Event date (optional)</label>
           <input
             type="date"
             value={eventDate}
             onChange={(e) => setEventDate(e.target.value)}
-            style={inputPanelStyle}
+            className={inputPanelClass}
           />
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <label style={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>Expires at (optional)</label>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-neutral-500">Expires at (optional)</label>
           <input
             type="date"
             value={expiresAt}
             onChange={(e) => setExpiresAt(e.target.value)}
-            style={inputPanelStyle}
+            className={inputPanelClass}
           />
         </div>
       </div>
 
-      {/* Email whitelist */}
       <EmailListInput
         emails={emailList}
         onAdd={handleAddEmailToList}
@@ -188,33 +215,33 @@ export function CreateGalleryForm({ onCreated, onCancel }: Props) {
         label={
           <>
             Allowed email addresses{" "}
-            <span style={{ fontStyle: "italic" }}>
-              (optional — passwordless OTP access; invite emails are sent on creation)
+            <span className="italic">
+              (optional - passwordless OTP access; invite emails are sent on creation)
             </span>
           </>
         }
       />
       {error && <FieldError message={error} />}
 
-      <div style={{ display: "flex", gap: 8 }}>
-        <button type="submit" disabled={creating} style={accentButtonStyle}>
-          {creating ? "Creating…" : "Create"}
-        </button>
-        <button
+      <div className="flex gap-2">
+        <Button
+          type="submit"
+          disabled={creating || slugStatus === "taken" || slugStatus === "reserved" || slugStatus === "invalid"}
+          loading={creating}
+          analyticsId="gallery_create_submit"
+          className={accentBtnClass}
+        >
+          {creating ? "Creating..." : "Create"}
+        </Button>
+        <Button
           type="button"
+          variant="ghost"
           onClick={onCancel}
-          style={{
-            padding: "8px 18px",
-            background: "none",
-            border: "1px solid var(--color-border)",
-            borderRadius: "var(--radius)",
-            color: "var(--color-text-muted)",
-            fontSize: "0.9rem",
-            cursor: "pointer",
-          }}
+          analyticsId="gallery_create_cancel"
+          className="px-4 py-2 bg-transparent border border-neutral-800 rounded-lg text-neutral-500 text-sm"
         >
           Cancel
-        </button>
+        </Button>
       </div>
     </form>
   );

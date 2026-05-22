@@ -1,23 +1,66 @@
 import { Hono } from "hono";
 import { Bindings } from "../index";
-import { requireViewerOrAdmin } from "../middleware/auth";
+import { authenticateViewerOrAdmin } from "../middleware/auth";
+import type { ViewerJWTPayload } from "../middleware/auth";
+import { getDb } from "../lib/db";
+import { getGalleryTenantId, lookupPhotoGallery } from "../services/photoService";
+import type { TenantVariables } from "../middleware/tenant";
 
-export const imageRoutes = new Hono<{ Bindings: Bindings }>();
+export const imageRoutes = new Hono<{
+  Bindings: Bindings;
+  Variables: TenantVariables & { viewerPayload?: ViewerJWTPayload };
+}>();
 
 // Dimensions and quality per variant
-const VARIANT_CONFIG: Record<string, { width: number; quality: number }> = {
+export const VARIANT_CONFIG: Record<string, { width: number; quality: number }> = {
   thumb: { width: 800, quality: 85 },
   banner: { width: 2400, quality: 90 },
   preview: { width: 2000, quality: 90 },
+  // Open Graph / Twitter Card preview thumbnail. Aspect ratio is preserved
+  // by the IMAGES binding; social platforms handle non-1.91:1 ratios fine.
+  og: { width: 1200, quality: 80 },
 };
 
 // ------------------------------------------------------------------
 // Protected: serve an image from R2, transformed via Cloudflare Images
 // Query params: ?variant=thumb (default) | banner | preview | full
 // ------------------------------------------------------------------
-imageRoutes.get("/:key{.+}", requireViewerOrAdmin as any, async (c) => {
+imageRoutes.get("/:key{.+}", async (c) => {
   const key = c.req.param("key");
   const variant = c.req.query("variant") ?? "thumb";
+
+  const slashIndex = key.indexOf("/");
+  if (slashIndex <= 0) return c.notFound();
+  const keyTenantId = key.slice(0, slashIndex);
+
+  const scopedTenantId = c.get("tenantId");
+  if (scopedTenantId && scopedTenantId !== keyTenantId) return c.notFound();
+
+  // Look up the photo's gallery so we can bypass auth for public galleries.
+  // If the photo is not in the DB we fall through to normal auth (preserves
+  // 401 behavior for unknown keys without a session).
+  const svcCtx = { env: c.env, db: getDb(c.env), actor: null };
+  const photoGallery = await lookupPhotoGallery(svcCtx, key);
+
+  let viewerPayload: ViewerJWTPayload | undefined;
+  const isPublic =
+    !!photoGallery?.isPublic &&
+    (!photoGallery.tenantId || photoGallery.tenantId === keyTenantId);
+
+  if (!isPublic) {
+    const auth = await authenticateViewerOrAdmin(c);
+    if (!auth.ok) return auth.response;
+    viewerPayload = auth.viewerPayload;
+  }
+
+  if (viewerPayload) {
+    if (viewerPayload.tenantId) {
+      if (viewerPayload.tenantId !== keyTenantId) return c.notFound();
+    } else {
+      const tenantId = await getGalleryTenantId(svcCtx, viewerPayload.galleryId);
+      if (!tenantId || tenantId !== keyTenantId) return c.notFound();
+    }
+  }
 
   const object = await c.env.IMAGES_BUCKET.get(key);
   if (!object) return c.notFound();

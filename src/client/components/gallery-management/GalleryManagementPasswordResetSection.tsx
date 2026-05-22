@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTenant } from "@/client/lib/tenantContext";
 import { PasswordField } from "@/client/components/PasswordField";
 
 type Props = {
@@ -6,6 +7,7 @@ type Props = {
 };
 
 export function GalleryManagementPasswordResetSection({ galleryId }: Props) {
+  const { apiBase } = useTenant();
   const [newPassword, setNewPassword] = useState("");
   const [resettingPassword, setResettingPassword] = useState(false);
   const [passwordResetDone, setPasswordResetDone] = useState(false);
@@ -14,7 +16,7 @@ export function GalleryManagementPasswordResetSection({ galleryId }: Props) {
     if (!newPassword) return;
     setResettingPassword(true);
     try {
-      const res = await fetch(`/api/admin/galleries/${galleryId}/password`, {
+      const res = await fetch(`${apiBase}/admin/galleries/${galleryId}/password`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -32,17 +34,8 @@ export function GalleryManagementPasswordResetSection({ galleryId }: Props) {
   }
 
   return (
-    <div style={{ marginTop: 8, paddingTop: 16, borderTop: "1px solid var(--color-border)" }}>
-      <label
-        style={{
-          fontSize: "0.8rem",
-          color: "var(--color-text-muted)",
-          display: "block",
-          marginBottom: 6,
-        }}
-      >
-        Reset gallery password
-      </label>
+    <div className="mt-2 pt-4 border-t border-neutral-800">
+      <label className="text-xs text-neutral-500 block mb-1.5">Reset gallery password</label>
       <PasswordField
         value={newPassword}
         onChange={setNewPassword}
@@ -50,7 +43,7 @@ export function GalleryManagementPasswordResetSection({ galleryId }: Props) {
         onAction={handleResetPassword}
         actionLoading={resettingPassword}
         actionDone={passwordResetDone}
-        showGenerate={true}
+        showGenerate
       />
     </div>
   );

@@ -3,9 +3,31 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Imago</title>
+    <title>%SITE_NAME%</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Default link-preview metadata. Per-gallery URLs are overridden at
+         the edge by the worker (see src/worker/routes/ogPreview.ts).
+         Values come from SITE_META in vite.config.ts. -->
+    <meta name="description" content="%SITE_DESCRIPTION_LONG%" />
+    <meta property="og:title" content="%SITE_NAME%" />
+    <meta property="og:description" content="%SITE_DESCRIPTION%" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="%SITE_NAME%" />
+    <meta property="og:image" content="%SITE_OG_IMAGE%" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="%SITE_NAME%" />
+    <meta name="twitter:description" content="%SITE_DESCRIPTION%" />
+    <meta name="twitter:image" content="%SITE_OG_IMAGE%" />
   </head>
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-73ZEXZLMFH"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-73ZEXZLMFH');
+  </script>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/client/main.tsx"></script>

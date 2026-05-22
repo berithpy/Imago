@@ -116,4 +116,123 @@ describe("gallery routes", () => {
     expect(singlePhotoRes.status).toBe(401);
     expect(await singlePhotoRes.json()).toEqual({ error: "Unauthorized" });
   });
+
+  it("GET /api/galleries/:slug returns 200 with gallery metadata", async () => {
+    await harness.seedGallery({ slug: "meta-gallery", isPublic: true });
+    const res = await harness.request("/api/galleries/meta-gallery");
+    expect(res.status).toBe(200);
+    const body = await res.json() as { gallery: { slug: string; name: string; is_public: number } };
+    expect(body.gallery.slug).toBe("meta-gallery");
+    expect(body.gallery.name).toBeTruthy();
+  });
+
+  it("GET /api/galleries/:slug returns 404 for missing gallery", async () => {
+    const res = await harness.request("/api/galleries/does-not-exist");
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "Gallery not found" });
+  });
+
+  it("GET /api/galleries returns list of galleries", async () => {
+    await harness.seedGallery({ slug: "list-a", isPublic: true });
+    await harness.seedGallery({ slug: "list-b", isPublic: false });
+    const res = await harness.request("/api/galleries");
+    expect(res.status).toBe(200);
+    const body = await res.json() as { galleries: Array<{ slug: string }> };
+    const slugs = body.galleries.map((g) => g.slug);
+    expect(slugs).toContain("list-a");
+    expect(slugs).toContain("list-b");
+  });
+
+  it("GET /api/galleries/:slug/export returns photo list for authenticated viewer", async () => {
+    const gallery = await harness.seedGallery({ slug: "export-gallery", isPublic: false, password: "export-pass" });
+    const photoId = crypto.randomUUID();
+    await harness.runSql(
+      "INSERT INTO photos (id, gallery_id, r2_key, original_name, size, uploaded_at, sort_order) VALUES (?, ?, ?, ?, ?, unixepoch(), ?)",
+      [photoId, gallery.id, `${gallery.id}/${photoId}.jpg`, "photo.jpg", 200, 1]
+    );
+
+    const loginRes = await harness.request(`/api/viewer/gallery/${gallery.slug}/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ password: "export-pass" }),
+    });
+    expect(loginRes.status).toBe(200);
+    const cookie = loginRes.headers.get("set-cookie") ?? "";
+
+    const exportRes = await harness.request(`/api/galleries/${gallery.slug}/export`, {
+      headers: { cookie },
+    });
+    expect(exportRes.status).toBe(200);
+    const body = await exportRes.json() as { galleryName: string; photos: Array<{ name: string; url: string }> };
+    expect(body.photos).toHaveLength(1);
+    expect(body.photos[0].name).toBe("photo.jpg");
+    expect(body.photos[0].url).toContain("variant=full");
+  });
+
+  it("GET /api/galleries/:slug/photos/:photoId returns photo data for authenticated viewer", async () => {
+    const gallery = await harness.seedGallery({ slug: "photo-by-id", isPublic: false, password: "pb-pass" });
+    const photoId = crypto.randomUUID();
+    await harness.runSql(
+      "INSERT INTO photos (id, gallery_id, r2_key, original_name, size, uploaded_at, sort_order) VALUES (?, ?, ?, ?, ?, unixepoch(), ?)",
+      [photoId, gallery.id, `${gallery.id}/${photoId}.jpg`, "target.jpg", 300, 1]
+    );
+
+    const loginRes = await harness.request(`/api/viewer/gallery/${gallery.slug}/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ password: "pb-pass" }),
+    });
+    expect(loginRes.status).toBe(200);
+    const cookie = loginRes.headers.get("set-cookie") ?? "";
+
+    const res = await harness.request(`/api/galleries/${gallery.slug}/photos/${photoId}`, {
+      headers: { cookie },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { photo: { id: string; original_name: string } };
+    expect(body.photo.id).toBe(photoId);
+    expect(body.photo.original_name).toBe("target.jpg");
+  });
+
+  // ----------------------------------------------------------------
+  // Viewer auth method (surfaced for client-side analytics)
+  // ----------------------------------------------------------------
+
+  it("GET /:slug/photos returns authMethod='public' for a public gallery", async () => {
+    const gallery = await harness.seedGallery({ slug: "public-am", isPublic: true });
+    const res = await harness.request(`/api/galleries/${gallery.slug}/photos`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { authMethod: string };
+    expect(body.authMethod).toBe("public");
+  });
+
+  it("GET /:slug/photos returns authMethod='password' after password login", async () => {
+    const gallery = await harness.seedGallery({ slug: "private-am", isPublic: false, password: "pw1234" });
+    const loginRes = await harness.request(`/api/viewer/gallery/${gallery.slug}/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ password: "pw1234" }),
+    });
+    const cookie = loginRes.headers.get("set-cookie") ?? "";
+    const res = await harness.request(`/api/galleries/${gallery.slug}/photos`, {
+      headers: { cookie },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { authMethod: string };
+    expect(body.authMethod).toBe("password");
+  });
+
+  it("GET /:slug/photos returns authMethod='magic_link' for whitelisted email session", async () => {
+    const gallery = await harness.seedGallery({ slug: "magic-am", isPublic: false, password: "pw1234" });
+    await harness.runSql(
+      "INSERT INTO gallery_allowed_emails (id, gallery_id, email) VALUES (?, ?, ?)",
+      [crypto.randomUUID(), gallery.id, "guest@example.com"]
+    );
+    mockGetSession.mockResolvedValue({ user: { email: "guest@example.com" } } as any);
+
+    const res = await harness.request(`/api/galleries/${gallery.slug}/photos`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { authMethod: string };
+    expect(body.authMethod).toBe("magic_link");
+  });
 });

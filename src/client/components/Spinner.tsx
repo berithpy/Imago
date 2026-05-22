@@ -1,4 +1,4 @@
-import { CSSProperties } from "react";
+import type { CSSProperties } from "react";
 
 interface SpinnerProps {
   size?: number;
@@ -8,37 +8,17 @@ interface SpinnerProps {
 export function Spinner({ size = 28, style }: SpinnerProps) {
   return (
     <div
-      style={{
-        width: size,
-        height: size,
-        border: `2px solid var(--color-border)`,
-        borderTopColor: "var(--color-accent)",
-        borderRadius: "50%",
-        animation: "spin 0.7s linear infinite",
-        ...style,
-      }}
+      className="border-2 border-neutral-800 border-t-amber-400 rounded-full animate-spin"
+      style={{ width: size, height: size, ...style }}
     />
   );
 }
 
-// Centred full-area variant
-export function SpinnerOverlay({ label = "Loading…" }: { label?: string }) {
+export function SpinnerOverlay({ label = "Loading..." }: { label?: string }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 14,
-        padding: "80px 24px",
-        color: "var(--color-text-muted)",
-        fontSize: "0.9rem",
-      }}
-    >
+    <div className="flex flex-col items-center justify-center gap-3.5 py-20 px-6 text-neutral-500 text-sm">
       <Spinner />
       {label}
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }

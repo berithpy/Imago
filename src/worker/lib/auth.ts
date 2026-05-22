@@ -1,10 +1,10 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { magicLink } from "better-auth/plugins";
+import { magicLink, organization } from "better-auth/plugins";
 import { drizzle } from "drizzle-orm/d1";
 import { Bindings } from "../index";
 import * as schema from "./schema";
-import { sendEmail, adminMagicLinkHtml, magicLinkHtml } from "./email";
+import { sendEmail, adminMagicLinkHtml, magicLinkHtml, orgInvitationHtml } from "./email";
 
 /**
  * Creates a better-auth instance bound to the runtime D1 database.
@@ -32,6 +32,22 @@ export function auth(env: Bindings, origin?: string) {
             to: email,
             subject: "Your sign-in link",
             html: isAdmin ? adminMagicLinkHtml(url) : magicLinkHtml("the gallery", url),
+          });
+        },
+      }),
+      organization({
+        allowUserToCreateOrganization: false,
+        async sendInvitationEmail(data) {
+          const acceptUrl = `${appUrl}/accept-invitation/${data.id}`;
+          await sendEmail(env.RESEND_API_KEY, env.FROM_EMAIL, {
+            to: data.email,
+            subject: `You've been invited to ${data.organization.name}`,
+            html: orgInvitationHtml(
+              data.organization.name,
+              acceptUrl,
+              data.inviter.user.name,
+              data.email,
+            ),
           });
         },
       }),
