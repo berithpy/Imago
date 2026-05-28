@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { SpinnerOverlay } from "@/client/components/Spinner";
 import { EmptyState } from "@/client/components/EmptyState";
 import { GalleryManagementHeader } from "@/client/components/gallery-management/GalleryManagementHeader";
+import { GalleryManagementInfoPanel } from "@/client/components/gallery-management/GalleryManagementInfoPanel";
 import { GalleryManagementSettingsPanel } from "@/client/components/gallery-management/GalleryManagementSettingsPanel";
 import { GalleryManagementEmailWhitelistSection } from "@/client/components/gallery-management/GalleryManagementEmailWhitelistSection";
 import { GalleryManagementPhotoGrid } from "@/client/components/gallery-management/GalleryManagementPhotoGrid";
@@ -102,6 +103,7 @@ export function GalleryManagementPage() {
   }
 
   const galleryId = gallery?.id;
+  const totalBytes = photos.reduce((sum, photo) => sum + (photo.size ?? 0), 0);
 
   return (
     <AppShell gallerySlug={gallerySlug}>
@@ -112,8 +114,6 @@ export function GalleryManagementPage() {
           hasPhotos={photos.length > 0}
           settingsOpen={showSettings}
           onToggleSettings={() => setShowSettings((value) => !value)}
-          onGalleryUpdated={updateGallery}
-          onPermanentDeleteSuccess={() => navigate(`${routeBase}/manage`)}
           uploadControl={
             galleryId ? (
               <GalleryManagementUploadControl
@@ -124,6 +124,12 @@ export function GalleryManagementPage() {
           }
         />
 
+        {gallery && (
+          <div className="mb-8">
+            <GalleryManagementInfoPanel photoCount={photos.length} totalBytes={totalBytes} />
+          </div>
+        )}
+
         {showSettings && gallery && (
           <>
             <GalleryManagementSettingsPanel
@@ -131,6 +137,7 @@ export function GalleryManagementPage() {
               gallery={gallery}
               onClose={() => setShowSettings(false)}
               onGalleryUpdated={updateGallery}
+              onPermanentDeleteSuccess={() => navigate(`${routeBase}/manage`)}
             />
             <GalleryManagementEmailWhitelistSection galleryId={gallery.id} />
           </>
