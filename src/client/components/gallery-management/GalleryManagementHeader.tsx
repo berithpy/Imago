@@ -10,15 +10,8 @@ type Props = {
   hasPhotos: boolean;
   settingsOpen: boolean;
   onToggleSettings: () => void;
-  onGalleryUpdated: (updater: (current: Gallery) => Gallery) => void;
-  onPermanentDeleteSuccess: () => void;
   uploadControl?: ReactNode;
 };
-
-const ghostBtnClass =
-  "px-4 py-2 bg-transparent border border-neutral-800 rounded-lg text-neutral-500 text-sm cursor-pointer disabled:opacity-50";
-const dangerBtnClass =
-  "px-4 py-2 bg-transparent border border-neutral-800 rounded-lg text-red-400 text-sm cursor-pointer disabled:opacity-50";
 
 function buildAbsoluteUrl(routeBase: string, slug: string): string {
   return `${window.location.origin}${routeBase}/${slug}`;
@@ -30,64 +23,14 @@ export function GalleryManagementHeader({
   hasPhotos,
   settingsOpen,
   onToggleSettings,
-  onGalleryUpdated,
-  onPermanentDeleteSuccess,
   uploadControl,
 }: Props) {
   const { apiBase, routeBase } = useTenant();
-  const [deletingGallery, setDeletingGallery] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState<string | null>(null);
   const [exportDone, setExportDone] = useState(false);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
   const [shareState, setShareState] = useState<"idle" | "shared" | "copied" | "failed">("idle");
-
-  async function handleTogglePublic() {
-    if (!gallery) return;
-    const next = !gallery.is_public;
-    await fetch(`${apiBase}/admin/galleries/${galleryId}/visibility`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ is_public: next }),
-    });
-    onGalleryUpdated((current) => ({ ...current, is_public: next ? 1 : 0 }));
-  }
-
-  async function handleSoftDelete() {
-    if (!gallery) return;
-    if (!confirm(`Hide "${gallery.name}" from viewers? You can restore it later.`)) return;
-    setDeletingGallery(true);
-    try {
-      await fetch(`${apiBase}/admin/galleries/${galleryId}`, { method: "DELETE", credentials: "include" });
-      onGalleryUpdated((current) => ({ ...current, deleted_at: Math.floor(Date.now() / 1000) }));
-    } finally {
-      setDeletingGallery(false);
-    }
-  }
-
-  async function handleRestore() {
-    if (!gallery) return;
-    setDeletingGallery(true);
-    try {
-      await fetch(`${apiBase}/admin/galleries/${galleryId}/restore`, { method: "POST", credentials: "include" });
-      onGalleryUpdated((current) => ({ ...current, deleted_at: null }));
-    } finally {
-      setDeletingGallery(false);
-    }
-  }
-
-  async function handlePermanentDelete() {
-    if (!gallery) return;
-    if (!confirm(`Permanently delete "${gallery.name}" and ALL its photos? This cannot be undone.`)) return;
-    setDeletingGallery(true);
-    try {
-      await fetch(`${apiBase}/admin/galleries/${galleryId}/permanent`, { method: "DELETE", credentials: "include" });
-      onPermanentDeleteSuccess();
-    } finally {
-      setDeletingGallery(false);
-    }
-  }
 
   async function handleExport() {
     setExporting(true);
@@ -183,31 +126,7 @@ export function GalleryManagementHeader({
         )}
       </div>
 
-      <div className="flex flex-wrap gap-2.5 items-center justify-end">
-        {gallery && (
-          <button
-            onClick={handleTogglePublic}
-            title={gallery.is_public ? "Make private" : "Make public"}
-            className={`px-4 py-2 border border-neutral-800 rounded-lg text-sm cursor-pointer ${gallery.is_public
-              ? "bg-amber-400 text-neutral-950 font-semibold"
-              : "bg-transparent text-neutral-500"
-              }`}
-          >
-            {gallery.is_public ? "Public" : "Private"}
-          </button>
-        )}
-        {gallery && (gallery.deleted_at ? (
-          <>
-            <button onClick={handleRestore} disabled={deletingGallery} className={ghostBtnClass}>Restore</button>
-            <button onClick={handlePermanentDelete} disabled={deletingGallery} className={dangerBtnClass}>
-              Delete forever
-            </button>
-          </>
-        ) : (
-          <button onClick={handleSoftDelete} disabled={deletingGallery} className={dangerBtnClass}>
-            Hide gallery
-          </button>
-        ))}
+      <div className="flex flex-wrap flex-1 gap-2.5 items-center justify-end">
         <button
           onClick={onToggleSettings}
           aria-pressed={settingsOpen}
@@ -242,7 +161,7 @@ export function GalleryManagementHeader({
             {exportDone ? "Saved!" : exporting ? exportProgress : "Export zip"}
           </button>
         )}
-        {uploadControl}
+        {uploadControl && <div className="ml-auto">{uploadControl}</div>}
       </div>
     </div>
   );

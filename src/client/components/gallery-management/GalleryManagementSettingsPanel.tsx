@@ -3,22 +3,29 @@ import { useTenant } from "@/client/lib/tenantContext";
 import type { Gallery } from "@/client/lib/galleryManagement";
 import { toDateInputValue } from "@/client/lib/galleryManagement";
 import { GalleryManagementPasswordResetSection } from "@/client/components/gallery-management/GalleryManagementPasswordResetSection";
+import { GalleryManagementVisibilityToggle } from "@/client/components/gallery-management/GalleryManagementVisibilityToggle";
 
 type Props = {
   galleryId: string;
   gallery: Gallery;
   onClose: () => void;
   onGalleryUpdated: (updater: (current: Gallery) => Gallery) => void;
+  onPermanentDeleteSuccess: () => void;
 };
 
 const inputClass =
   "px-3 py-2 bg-neutral-950 border border-neutral-800 rounded-lg text-neutral-100 text-sm outline-none";
+const ghostBtnClass =
+  "px-4 py-2 bg-transparent border border-neutral-800 rounded-lg text-neutral-500 text-sm cursor-pointer disabled:opacity-50";
+const dangerBtnClass =
+  "inline-flex items-center gap-1.5 px-4 py-2 bg-transparent border border-neutral-800 rounded-lg text-red-400 text-sm cursor-pointer disabled:opacity-50";
 
 export function GalleryManagementSettingsPanel({
   galleryId,
   gallery,
   onClose,
   onGalleryUpdated,
+  onPermanentDeleteSuccess,
 }: Props) {
   const { apiBase } = useTenant();
   const [settingsName, setSettingsName] = useState("");
@@ -26,6 +33,8 @@ export function GalleryManagementSettingsPanel({
   const [settingsExpiresAt, setSettingsExpiresAt] = useState("");
   const [sharePreviewEnabled, setSharePreviewEnabled] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [togglingVisibility, setTogglingVisibility] = useState(false);
+  const [deletingGallery, setDeletingGallery] = useState(false);
 
   useEffect(() => {
     setSettingsName(gallery.name);
@@ -33,6 +42,54 @@ export function GalleryManagementSettingsPanel({
     setSettingsExpiresAt(gallery.expires_at ? toDateInputValue(gallery.expires_at) : "");
     setSharePreviewEnabled(!!gallery.share_preview_enabled);
   }, [gallery]);
+
+  async function handleToggleVisibility() {
+    const next = !gallery.is_public;
+    setTogglingVisibility(true);
+    try {
+      await fetch(`${apiBase}/admin/galleries/${galleryId}/visibility`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ is_public: next }),
+      });
+      onGalleryUpdated((current) => ({ ...current, is_public: next ? 1 : 0 }));
+    } finally {
+      setTogglingVisibility(false);
+    }
+  }
+
+  async function handleSoftDelete() {
+    if (!confirm(`Hide "${gallery.name}" from viewers? You can restore it later.`)) return;
+    setDeletingGallery(true);
+    try {
+      await fetch(`${apiBase}/admin/galleries/${galleryId}`, { method: "DELETE", credentials: "include" });
+      onGalleryUpdated((current) => ({ ...current, deleted_at: Math.floor(Date.now() / 1000) }));
+    } finally {
+      setDeletingGallery(false);
+    }
+  }
+
+  async function handleRestore() {
+    setDeletingGallery(true);
+    try {
+      await fetch(`${apiBase}/admin/galleries/${galleryId}/restore`, { method: "POST", credentials: "include" });
+      onGalleryUpdated((current) => ({ ...current, deleted_at: null }));
+    } finally {
+      setDeletingGallery(false);
+    }
+  }
+
+  async function handlePermanentDelete() {
+    if (!confirm(`Permanently delete "${gallery.name}" and ALL its photos? This cannot be undone.`)) return;
+    setDeletingGallery(true);
+    try {
+      await fetch(`${apiBase}/admin/galleries/${galleryId}/permanent`, { method: "DELETE", credentials: "include" });
+      onPermanentDeleteSuccess();
+    } finally {
+      setDeletingGallery(false);
+    }
+  }
 
   async function handleSaveSettings(e: React.FormEvent) {
     e.preventDefault();
@@ -76,6 +133,13 @@ export function GalleryManagementSettingsPanel({
       className="mb-8 px-6 py-5 bg-neutral-900 border border-neutral-800 rounded-lg flex flex-col gap-3.5"
     >
       <h3 className="font-semibold text-base mb-1">Gallery Settings</h3>
+
+      <GalleryManagementVisibilityToggle
+        isPublic={!!gallery.is_public}
+        disabled={togglingVisibility}
+        onChange={handleToggleVisibility}
+      />
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="flex flex-col gap-1.5">
           <label className="text-xs text-neutral-500">Gallery name</label>
@@ -143,6 +207,49 @@ export function GalleryManagementSettingsPanel({
       </div>
 
       <GalleryManagementPasswordResetSection galleryId={galleryId} />
+
+      <div className="mt-1 pt-4 border-t border-neutral-800">
+        <h4 className="text-sm font-semibold text-red-400 mb-1">Danger zone</h4>
+        {gallery.deleted_at ? (
+          <>
+            <p className="text-[0.78rem] text-neutral-500 mb-2.5">
+              This gallery is hidden from viewers. Restore it or delete it permanently.
+            </p>
+            <div className="flex flex-wrap gap-2.5">
+              <button
+                type="button"
+                onClick={handleRestore}
+                disabled={deletingGallery}
+                className={ghostBtnClass}
+              >
+                Restore
+              </button>
+              <button
+                type="button"
+                onClick={handlePermanentDelete}
+                disabled={deletingGallery}
+                className={dangerBtnClass}
+              >
+                <span aria-hidden="true">🗑️</span> Delete forever
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-[0.78rem] text-neutral-500 mb-2.5">
+              Hide this gallery from viewers. You can restore it later.
+            </p>
+            <button
+              type="button"
+              onClick={handleSoftDelete}
+              disabled={deletingGallery}
+              className={dangerBtnClass}
+            >
+              <span aria-hidden="true">🗑️</span> Hide gallery
+            </button>
+          </>
+        )}
+      </div>
     </form>
   );
 }

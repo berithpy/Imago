@@ -235,3 +235,8 @@ This keeps us moving now with a reliable manual path while preserving a clean ru
 ### Tenant filter on operator dashboard
 
 We should rethink that users table to be first a list of tenants and then when you click the tenant it shows you all the users in that tenants, we allready have a tenant list on that page, so we could add a search bar for the tenants and then add a button to se the users associated with that tenant, we should consider the operator users as well, how to get them
+
+
+
+--- 
+### Replace resend with cloudflare's email sending service
