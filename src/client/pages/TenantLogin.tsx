@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { createAuthClient } from "better-auth/client";
 import { LoginCard } from "@/client/components/LoginCard";
+import { SpinnerOverlay } from "@/client/components/Spinner";
 import { useTenant } from "@/client/lib/tenantContext";
 
 const authClient = createAuthClient({
@@ -47,7 +48,13 @@ export function TenantLogin() {
     }
   }
 
-  if (checkingSession) return null;
+  if (checkingSession) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <SpinnerOverlay />
+      </div>
+    );
+  }
 
   return (
     <div>

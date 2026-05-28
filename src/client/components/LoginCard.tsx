@@ -27,38 +27,41 @@ export function LoginCard({
   onPassword,
   onAdminBypass,
 }: Props) {
-  const [mode, setMode] = useState<"email" | "password">("email");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [magicSubmitting, setMagicSubmitting] = useState(false);
+  const [passwordSubmitting, setPasswordSubmitting] = useState(false);
+  const [magicError, setMagicError] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
   const [emailSent, setEmailSent] = useState(false);
+
+  const showPasswordForm = !!(showPasswordFallback && onPassword);
 
   async function handleEmailSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError(null);
-    setSubmitting(true);
+    setMagicError(null);
+    setMagicSubmitting(true);
     try {
       await onMagicLink(email);
       setEmailSent(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to send link");
+      setMagicError(err instanceof Error ? err.message : "Failed to send link");
     } finally {
-      setSubmitting(false);
+      setMagicSubmitting(false);
     }
   }
 
   async function handlePasswordSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!onPassword) return;
-    setError(null);
-    setSubmitting(true);
+    setPasswordError(null);
+    setPasswordSubmitting(true);
     try {
       await onPassword(password);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Incorrect password");
+      setPasswordError(err instanceof Error ? err.message : "Incorrect password");
     } finally {
-      setSubmitting(false);
+      setPasswordSubmitting(false);
     }
   }
 
@@ -75,34 +78,49 @@ export function LoginCard({
           <div className="text-amber-400 text-sm">
             Check your inbox for the sign-in link.
           </div>
-        ) : mode === "email" ? (
-          <form onSubmit={handleEmailSubmit} className="flex flex-col gap-4">
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              required
-              autoFocus
-              className={inputLargeClass}
-            />
-            {error && <FieldError message={error} />}
-            <Button type="submit" size="lg" loading={submitting} analyticsId="login_submit" analyticsParams={{ login_mode: "magic_link" }} className="w-full">
-              {submitting ? "Sending..." : "Send magic link"}
-            </Button>
-            {showPasswordFallback && onPassword && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="lg"
-                onClick={() => { setMode("password"); setError(null); }}
-                analyticsId="login_toggle_magic_link"
-                analyticsParams={{ to_mode: "password" }}
-                className="w-full"
-              >
-                Use password instead
+        ) : (
+          <div className="flex flex-col gap-6">
+            <form onSubmit={handleEmailSubmit} className="flex flex-col gap-4">
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                required
+                autoFocus
+                className={inputLargeClass}
+              />
+              {magicError && <FieldError message={magicError} />}
+              <Button type="submit" size="lg" loading={magicSubmitting} analyticsId="login_submit" analyticsParams={{ login_mode: "magic_link" }} className="w-full">
+                {magicSubmitting ? "Sending..." : "Send magic link"}
               </Button>
+            </form>
+
+            {showPasswordForm && (
+              <>
+                <div className="flex items-center gap-3 text-neutral-600 text-xs uppercase tracking-[0.12em]">
+                  <span className="flex-1 h-px bg-neutral-800" />
+                  or
+                  <span className="flex-1 h-px bg-neutral-800" />
+                </div>
+
+                <form onSubmit={handlePasswordSubmit} className="flex flex-col gap-4">
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Password"
+                    required
+                    className={inputLargeClass}
+                  />
+                  {passwordError && <FieldError message={passwordError} />}
+                  <Button type="submit" size="lg" loading={passwordSubmitting} analyticsId="login_submit" analyticsParams={{ login_mode: "password" }} className="w-full">
+                    {passwordSubmitting ? "Signing in..." : "Sign in"}
+                  </Button>
+                </form>
+              </>
             )}
+
             {showAdminBypass && onAdminBypass && (
               <Button
                 type="button"
@@ -116,34 +134,7 @@ export function LoginCard({
                 {bypassLoading ? "..." : "Admin: enter as viewer"}
               </Button>
             )}
-          </form>
-        ) : (
-          <form onSubmit={handlePasswordSubmit} className="flex flex-col gap-4">
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Password"
-              required
-              autoFocus
-              className={inputLargeClass}
-            />
-            {error && <FieldError message={error} />}
-            <Button type="submit" size="lg" loading={submitting} analyticsId="login_submit" analyticsParams={{ login_mode: "password" }} className="w-full">
-              {submitting ? "Signing in..." : "Sign in"}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="lg"
-              onClick={() => { setMode("email"); setError(null); }}
-              analyticsId="login_toggle_magic_link"
-              analyticsParams={{ to_mode: "magic_link" }}
-              className="w-full"
-            >
-              Use magic link instead
-            </Button>
-          </form>
+          </div>
         )}
       </div>
     </div>
