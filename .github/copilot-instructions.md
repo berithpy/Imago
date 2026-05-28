@@ -68,4 +68,4 @@ Worker route tests live in `src/worker/routes/__tests__/`. See `testHarness.ts` 
 
 ## Git Commits
 
-- Never add a `Co-authored-by: Copilot ...` trailer (or any Copilot co-author attribution) to commit messages. Do not attribute commits to Copilot.
+- Never add a `Co-authored-by: ...` trailer to commit messages. Do not attribute commits to an agent
