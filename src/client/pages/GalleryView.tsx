@@ -339,7 +339,13 @@ export function GalleryView() {
           </div>
         )}
 
-        {!expired && (
+        {!expired && loading && (
+          <div className="min-h-screen flex items-center justify-center">
+            <SpinnerOverlay />
+          </div>
+        )}
+
+        {!expired && !loading && (
           <>
             {bannerKey && (
               <div className="w-full max-h-[340px] overflow-hidden">
@@ -401,28 +407,25 @@ export function GalleryView() {
               )}
             </div>
 
-            {loading && <SpinnerOverlay />}
             {error && <ErrorMessage message={error} onRetry={() => { setError(null); setRetryCount((c) => c + 1); }} />}
 
-            {!loading && (
-              <div className="max-w-[1200px] mx-auto">
-                <MasonryGrid
-                  photos={photos}
-                  total={total}
-                  onPhotoClick={openLightbox}
-                  showInfo={showInfo}
-                  scrollToIndex={pendingScrollToIndex}
-                />
-                <div ref={setSentinel} className="h-px" />
-                {loadingMore && (
-                  <div className="flex justify-center py-4">
-                    <Spinner />
-                  </div>
-                )}
-              </div>
-            )}
+            <div className="max-w-[1200px] mx-auto">
+              <MasonryGrid
+                photos={photos}
+                total={total}
+                onPhotoClick={openLightbox}
+                showInfo={showInfo}
+                scrollToIndex={pendingScrollToIndex}
+              />
+              <div ref={setSentinel} className="h-px" />
+              {loadingMore && (
+                <div className="flex justify-center py-4">
+                  <Spinner />
+                </div>
+              )}
+            </div>
 
-            {!loading && photos.length === 0 && !error && (
+            {photos.length === 0 && !error && (
               <EmptyState message="No photos in this gallery yet." />
             )}
 

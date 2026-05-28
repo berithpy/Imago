@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { createAuthClient } from "better-auth/client";
 import { LoginCard } from "@/client/components/LoginCard";
+import { SpinnerOverlay } from "@/client/components/Spinner";
 
 const authClient = createAuthClient({
   baseURL: `${window.location.origin}/api/auth`,
@@ -45,7 +46,13 @@ export function UniversalLogin() {
     }
   }
 
-  if (checkingSession) return null;
+  if (checkingSession) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <SpinnerOverlay />
+      </div>
+    );
+  }
 
   return (
     <div>

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { createAuthClient } from "better-auth/client";
 import { LoginCard } from "@/client/components/LoginCard";
+import { SpinnerOverlay } from "@/client/components/Spinner";
 import { useTenant } from "@/client/lib/tenantContext";
 
 const authClient = createAuthClient({ baseURL: `${window.location.origin}/api/auth` });
@@ -89,7 +90,13 @@ export function GalleryLogin() {
     }
   }
 
-  if (checking) return null;
+  if (checking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <SpinnerOverlay />
+      </div>
+    );
+  }
 
   return (
     <LoginCard
