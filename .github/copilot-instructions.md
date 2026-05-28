@@ -46,17 +46,17 @@ Worker route tests live in `src/worker/routes/__tests__/`. See `testHarness.ts` 
 
 ## Route Map
 
-| Prefix             | File                   | Who can call                  |
-| ------------------ | ---------------------- | ----------------------------- |
-| `/api/auth/*`      | better-auth (internal) | better-auth only              |
-| `/api/login/*`     | `routes/login.ts`      | Public (universal admin login: magic-link + resolve) |
-| `/api/operator/tenants/*` | `routes/tenants.ts` | Super-admin session           |
-| `/api/tenant/*`    | `routes/admin.ts`      | Authenticated admin session (global mount) |
-| `/api/t/:slug/admin/*` | `routes/admin.ts`  | Authenticated admin session (tenant-scoped mount) |
-| `/api/viewer/*`    | `routes/auth.ts`       | Public (issues viewer tokens) |
-| `/api/galleries/*` | `routes/galleries.ts`  | Public or viewer token        |
-| `/api/images/*`    | `routes/images.ts`     | Public or viewer token        |
-| `/api/subscribe/*` | `routes/subscribe.ts`  | Public                        |
+| Prefix                    | File                   | Who can call                                         |
+| ------------------------- | ---------------------- | ---------------------------------------------------- |
+| `/api/auth/*`             | better-auth (internal) | better-auth only                                     |
+| `/api/login/*`            | `routes/login.ts`      | Public (universal admin login: magic-link + resolve) |
+| `/api/operator/tenants/*` | `routes/tenants.ts`    | Super-admin session                                  |
+| `/api/tenant/*`           | `routes/admin.ts`      | Authenticated admin session (global mount)           |
+| `/api/t/:slug/admin/*`    | `routes/admin.ts`      | Authenticated admin session (tenant-scoped mount)    |
+| `/api/viewer/*`           | `routes/auth.ts`       | Public (issues viewer tokens)                        |
+| `/api/galleries/*`        | `routes/galleries.ts`  | Public or viewer token                               |
+| `/api/images/*`           | `routes/images.ts`     | Public or viewer token                               |
+| `/api/subscribe/*`        | `routes/subscribe.ts`  | Public                                               |
 
 ## Conventions
 
@@ -65,3 +65,7 @@ Worker route tests live in `src/worker/routes/__tests__/`. See `testHarness.ts` 
 - `is_public` galleries skip password checks; private galleries require a valid viewer JWT or admin session
 - Bindings and secrets are typed in `Bindings` (see `src/worker/index.ts`)
 - See `PLAN.md` for the active roadmap and stage sequencing
+
+## Git Commits
+
+- Never add a `Co-authored-by: Copilot ...` trailer (or any Copilot co-author attribution) to commit messages. Do not attribute commits to Copilot.
