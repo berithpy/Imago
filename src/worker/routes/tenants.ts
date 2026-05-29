@@ -1,6 +1,7 @@
 import { Hono, type Context } from "hono";
 import { Bindings } from "../index";
 import { getDb } from "../lib/db";
+import { parsePositiveInt } from "../lib/pagination";
 import { resolveActorContext } from "../lib/roles";
 import {
   checkTenantSlug,
@@ -76,8 +77,32 @@ tenantsRoutes.use("/*", async (c, next) => {
 // GET / — list all tenants (including soft-deleted)
 // ------------------------------------------------------------------
 tenantsRoutes.get("/", async (c) => {
+  const q = (c.req.query("q") ?? "").trim();
+  const page = parsePositiveInt(c.req.query("page"));
+  const pageSize = parsePositiveInt(c.req.query("pageSize"));
+  const safePageSize = pageSize ? Math.min(pageSize, 100) : undefined;
+  const safePage = safePageSize ? page ?? 1 : undefined;
+
   const ctx = { env: c.env, db: getDb(c.env), actor: null };
-  return c.json({ tenants: await listTenants(ctx) });
+  const result = await listTenants(ctx, {
+    q,
+    page: safePage,
+    pageSize: safePageSize,
+  });
+
+  if (safePage && safePageSize) {
+    return c.json({
+      tenants: result.tenants,
+      pagination: {
+        page: safePage,
+        pageSize: safePageSize,
+        total: result.total,
+        totalPages: Math.max(1, Math.ceil(result.total / safePageSize)),
+      },
+    });
+  }
+
+  return c.json({ tenants: result.tenants });
 });
 
 // ------------------------------------------------------------------

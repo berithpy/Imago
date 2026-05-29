@@ -64,6 +64,30 @@ describe("tenants routes", () => {
     expect(Array.isArray(body.tenants)).toBe(true);
   });
 
+  it("GET /api/operator/tenants supports q + page + pageSize", async () => {
+    await harness.seedUser({ email: "superadmin@example.com", isSuperAdmin: true });
+    await harness.seedTenant("acme-weddings", "Acme Weddings");
+    await harness.seedTenant("acme-studio", "Acme Studio");
+    await harness.seedTenant("other-family", "Other Family");
+
+    const res = await harness.request("/api/operator/tenants?q=acme&page=1&pageSize=1");
+    expect(res.status).toBe(200);
+
+    const body = await res.json() as {
+      tenants: Array<{ slug: string }>;
+      pagination: { page: number; pageSize: number; total: number; totalPages: number };
+    };
+
+    expect(body.pagination).toEqual({
+      page: 1,
+      pageSize: 1,
+      total: 2,
+      totalPages: 2,
+    });
+    expect(body.tenants.length).toBe(1);
+    expect(body.tenants[0]?.slug).toContain("acme");
+  });
+
   // ------------------------------------------------------------------
   // CRUD
   // ------------------------------------------------------------------
@@ -219,6 +243,33 @@ describe("tenants routes", () => {
     const emails = body.users.map((u) => u.email);
     expect(emails).toContain("tenant-member@example.com");
     expect(emails).not.toContain("other@example.com");
+  });
+
+  it("GET /api/tenant/users supports q + page + pageSize + superAdminOnly", async () => {
+    await harness.seedUser({ email: "superadmin@example.com", isSuperAdmin: true });
+    await harness.seedUser({ email: "operator.alpha@example.com", isSuperAdmin: true });
+    await harness.seedUser({ email: "operator.beta@example.com", isSuperAdmin: true });
+    await harness.seedUser({ email: "member@example.com", isSuperAdmin: false });
+
+    const res = await harness.request(
+      "/api/tenant/users?q=operator&page=1&pageSize=1&superAdminOnly=1"
+    );
+    expect(res.status).toBe(200);
+
+    const body = await res.json() as {
+      users: Array<{ email: string; is_super_admin: number }>;
+      pagination: { page: number; pageSize: number; total: number; totalPages: number };
+    };
+
+    expect(body.pagination).toEqual({
+      page: 1,
+      pageSize: 1,
+      total: 2,
+      totalPages: 2,
+    });
+    expect(body.users.length).toBe(1);
+    expect(body.users[0]?.email).toContain("operator");
+    expect(body.users[0]?.is_super_admin).toBe(1);
   });
 
   // ------------------------------------------------------------------

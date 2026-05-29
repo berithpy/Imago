@@ -81,10 +81,10 @@ const cases: Case[] = [
     expected: [],
   },
   {
-    name: "imago_operator @ platform — primary nav stays empty",
+    name: "imago_operator @ platform — tenants and users in primary nav",
     auth: IMAGO_OP,
     ctx: {},
-    expected: [],
+    expected: ["platform-tenants", "platform-users"],
   },
   {
     name: "tenant_operator @ platform (no tenant ctx) — no items",
@@ -243,13 +243,20 @@ describe("buildTenantSettingsNav", () => {
 });
 
 describe("buildOperatorSettingsNav", () => {
-  it("puts the operator dashboard in the settings menu for imago operators", () => {
-    expect(ids(buildOperatorSettingsNav(IMAGO_OP))).toEqual(["platform-operator"]);
-    expect(buildOperatorSettingsNav(IMAGO_OP)[0]?.to).toBe("/operator");
+  it("keeps operator settings menu empty because platform links are in primary nav", () => {
+    expect(ids(buildOperatorSettingsNav(IMAGO_OP))).toEqual([]);
   });
 
   it("does not expose operator settings links for regular tenant users", () => {
     expect(buildOperatorSettingsNav(TENANT_OP_ACME)).toEqual([]);
+  });
+});
+
+describe("buildNav — platform links", () => {
+  it("uses dedicated tenants and users routes in primary nav", () => {
+    const items = buildNav(IMAGO_OP, {});
+    expect(items.find((i) => i.id === "platform-tenants")?.to).toBe("/operator/tenants");
+    expect(items.find((i) => i.id === "platform-users")?.to).toBe("/operator/users");
   });
 });
 

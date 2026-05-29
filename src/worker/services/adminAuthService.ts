@@ -164,8 +164,15 @@ import { IMAGO_ORG_SLUG as PLATFORM_ORG_SLUG, ROLES as ROLE_MAP } from "../lib/r
 
 export async function listPlatformUsers(
   ctx: ServiceCtx,
-  input: { actor: ActorContext; tenantId?: string }
-): Promise<unknown[]> {
+  input: {
+    actor: ActorContext;
+    tenantId?: string;
+    q?: string;
+    page?: number;
+    pageSize?: number;
+    superAdminOnly?: boolean;
+  }
+): Promise<{ users: unknown[]; total: number }> {
   if (!input.actor.user) throw new ServiceError("UNAUTHORIZED", "Unauthorized");
   if (!input.actor.superAdmin) throw new ServiceError("FORBIDDEN", "Forbidden");
 
@@ -181,29 +188,52 @@ export async function listPlatformUsers(
     )
   )`;
 
+  const q = (input.q ?? "").trim().toLowerCase();
+  const where: string[] = [];
+  const binds: unknown[] = [];
+
   if (input.tenantId) {
-    const { results } = await ctx.env.DB.prepare(
-      `SELECT u.id, u.name, u.email, ${SUPER_ADMIN_EXPR} AS is_super_admin, u.createdAt, m.role
-       FROM user u
-       JOIN member m ON m.userId = u.id
-       JOIN organization o ON o.id = m.organizationId
-       JOIN tenants t ON t.organization_id = o.id
-       WHERE t.id = ?
-       ORDER BY u.createdAt DESC`
-    ).bind(input.tenantId).all();
-    return results;
+    where.push("t.id = ?");
+    binds.push(input.tenantId);
   }
 
-  const { results } = await ctx.env.DB.prepare(
-    `SELECT u.id, u.name, u.email, ${SUPER_ADMIN_EXPR} AS is_super_admin, u.createdAt,
-            m.role, t.id AS tenant_id, t.name AS tenant_name
-     FROM user u
-     LEFT JOIN member m ON m.userId = u.id
-     LEFT JOIN organization o ON o.id = m.organizationId
-     LEFT JOIN tenants t ON t.organization_id = o.id
-     ORDER BY u.createdAt DESC`
-  ).all();
-  return results;
+  if (q) {
+    where.push("(lower(u.name) LIKE ? OR lower(u.email) LIKE ? OR lower(ifnull(t.name, '')) LIKE ?)");
+    const like = `%${q}%`;
+    binds.push(like, like, like);
+  }
+
+  if (input.superAdminOnly) {
+    where.push(`${SUPER_ADMIN_EXPR} = 1`);
+  }
+
+  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+
+  const totalQuery = `SELECT count(*) AS count
+    FROM user u
+    LEFT JOIN member m ON m.userId = u.id
+    LEFT JOIN organization o ON o.id = m.organizationId
+    LEFT JOIN tenants t ON t.organization_id = o.id
+    ${whereSql}`;
+  const totalRow = await ctx.env.DB.prepare(totalQuery).bind(...binds).first<{ count: number }>();
+  const total = Number(totalRow?.count ?? 0);
+
+  const hasPagination = typeof input.page === "number" && typeof input.pageSize === "number";
+  const paginationSql = hasPagination ? " LIMIT ? OFFSET ?" : "";
+  const paginationBinds = hasPagination
+    ? [...binds, input.pageSize as number, ((input.page as number) - 1) * (input.pageSize as number)]
+    : binds;
+
+  const usersQuery = `SELECT u.id, u.name, u.email, ${SUPER_ADMIN_EXPR} AS is_super_admin, u.createdAt,
+      m.role, t.id AS tenant_id, t.name AS tenant_name
+    FROM user u
+    LEFT JOIN member m ON m.userId = u.id
+    LEFT JOIN organization o ON o.id = m.organizationId
+    LEFT JOIN tenants t ON t.organization_id = o.id
+    ${whereSql}
+    ORDER BY u.createdAt DESC${paginationSql}`;
+  const { results } = await ctx.env.DB.prepare(usersQuery).bind(...paginationBinds).all();
+  return { users: results, total };
 }
 
 export type LegacyInviteInput = {

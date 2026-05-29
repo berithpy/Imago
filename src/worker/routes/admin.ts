@@ -3,6 +3,7 @@ import { setCookie } from "hono/cookie";
 import { Bindings } from "../index";
 import { auth } from "../lib/auth";
 import { getDb } from "../lib/db";
+import { parsePositiveInt } from "../lib/pagination";
 import { resolveActorContext } from "../lib/roles";
 import {
   addAllowedEmail,
@@ -364,11 +365,33 @@ adminRoutes.delete("/galleries/:id/allowed-emails/:email", async (c) => {
 adminRoutes.get("/users", async (c) => {
   try {
     const actor = await resolveActorContext(c);
-    const users = await listPlatformUsers(svc(c), {
+    const page = parsePositiveInt(c.req.query("page"));
+    const pageSize = parsePositiveInt(c.req.query("pageSize"));
+    const safePageSize = pageSize ? Math.min(pageSize, 100) : undefined;
+    const safePage = safePageSize ? page ?? 1 : undefined;
+
+    const result = await listPlatformUsers(svc(c), {
       actor,
       tenantId: c.req.query("tenantId"),
+      q: (c.req.query("q") ?? "").trim(),
+      page: safePage,
+      pageSize: safePageSize,
+      superAdminOnly: c.req.query("superAdminOnly") === "1",
     });
-    return c.json({ users });
+
+    if (safePage && safePageSize) {
+      return c.json({
+        users: result.users,
+        pagination: {
+          page: safePage,
+          pageSize: safePageSize,
+          total: result.total,
+          totalPages: Math.max(1, Math.ceil(result.total / safePageSize)),
+        },
+      });
+    }
+
+    return c.json({ users: result.users });
   } catch (err) {
     return mapErr(c, err);
   }

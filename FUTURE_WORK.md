@@ -228,7 +228,11 @@ This keeps us moving now with a reliable manual path while preserving a clean ru
 
 Tenant dashboard Gallery list should maybe support filtering by name, date, galleries should also support some kind of tag system which would allow a tenant to categorize their galleries in basic text tags, this tags should be something like studio, event, family etc
 We should consider how to not make this filtering slow
+We should also support pagination in the gallery list
+The filtering should happen in the worker we should not fetch everything, only the galleries that match the filter, we can use drizzle for this and we can use the same approach for the tags, we can have a tags table that has a many to many relationship with the galleries table, this way we can filter by tags as well
 
-
+### Tenant dashboard should have stats
+Currently when you load a tenant you see all the galleries, besides that, on top we should have a stats section similar to the operator dashboard
+We should also update the tenant shell, currently it says the tenant name and its a button that takes you to the dashboard, this text should still be there but it shouldn't be a button, the current page should be called "dashboard" and should be a button on the shell
 
 

@@ -116,6 +116,24 @@ export function buildNav(
   const t = ctx.tenantSlug;
   const g = ctx.gallerySlug;
 
+  // -- platform scope -------------------------------------------------
+  if (!t && !g && auth?.superAdmin) {
+    items.push(
+      {
+        id: "platform-tenants",
+        label: "Tenants",
+        to: "/operator/tenants",
+        scope: "platform",
+      },
+      {
+        id: "platform-users",
+        label: "Users",
+        to: "/operator/users",
+        scope: "platform",
+      }
+    );
+  }
+
   // -- tenant-admin scope ----------------------------------------------
   if (t && canAdminTenant(auth, t)) {
     items.push({
@@ -219,14 +237,7 @@ export function buildTenantSettingsNav(
 /** Platform-level destinations shown from the settings cog for operators. */
 export function buildOperatorSettingsNav(auth: AuthState | null): NavItem[] {
   if (!auth?.superAdmin) return [];
-  return [
-    {
-      id: "platform-operator",
-      label: "Operator dashboard",
-      to: "/operator",
-      scope: "platform",
-    },
-  ];
+  return [];
 }
 
 export function isNavItemActive(currentPath: string, item: NavItem): boolean {

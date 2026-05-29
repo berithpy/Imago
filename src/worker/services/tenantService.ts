@@ -164,22 +164,106 @@ export type TenantSummary = {
   created_at: number;
 };
 
+export type TenantListInput = {
+  q?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+export type TenantListResult = {
+  tenants: TenantSummary[];
+  total: number;
+};
+
 /** List all tenants (super-admin view, includes soft-deleted). */
-export async function listTenants(ctx: ServiceCtx): Promise<TenantSummary[]> {
-  const rows = await ctx.db
-    .select({
-      id: tenants.id,
-      slug: tenants.slug,
-      name: tenants.name,
-      organization_id: tenants.organizationId,
-      parent_id: tenants.parentId,
-      deleted_at: tenants.deletedAt,
-      created_at: tenants.createdAt,
-    })
-    .from(tenants)
-    .orderBy(sql`created_at DESC`)
-    .all();
-  return rows;
+export async function listTenants(
+  ctx: ServiceCtx,
+  input: TenantListInput = {}
+): Promise<TenantListResult> {
+  const q = (input.q ?? "").trim().toLowerCase();
+  const page = input.page;
+  const pageSize = input.pageSize;
+  const hasPagination = typeof page === "number" && typeof pageSize === "number";
+
+  const whereClause = q
+    ? sql`(lower(${tenants.name}) LIKE ${`%${q}%`} OR lower(${tenants.slug}) LIKE ${`%${q}%`})`
+    : undefined;
+
+  const totalRow = whereClause
+    ? await ctx.db
+      .select({ count: sql<number>`count(*)` })
+      .from(tenants)
+      .where(whereClause)
+      .get()
+    : await ctx.db
+      .select({ count: sql<number>`count(*)` })
+      .from(tenants)
+      .get();
+  const total = Number(totalRow?.count ?? 0);
+
+  const rows = await (hasPagination
+    ? whereClause
+      ? ctx.db
+        .select({
+          id: tenants.id,
+          slug: tenants.slug,
+          name: tenants.name,
+          organization_id: tenants.organizationId,
+          parent_id: tenants.parentId,
+          deleted_at: tenants.deletedAt,
+          created_at: tenants.createdAt,
+        })
+        .from(tenants)
+        .where(whereClause)
+        .orderBy(sql`created_at DESC`)
+        .limit(pageSize)
+        .offset((page - 1) * pageSize)
+        .all()
+      : ctx.db
+        .select({
+          id: tenants.id,
+          slug: tenants.slug,
+          name: tenants.name,
+          organization_id: tenants.organizationId,
+          parent_id: tenants.parentId,
+          deleted_at: tenants.deletedAt,
+          created_at: tenants.createdAt,
+        })
+        .from(tenants)
+        .orderBy(sql`created_at DESC`)
+        .limit(pageSize)
+        .offset((page - 1) * pageSize)
+        .all()
+    : whereClause
+      ? ctx.db
+        .select({
+          id: tenants.id,
+          slug: tenants.slug,
+          name: tenants.name,
+          organization_id: tenants.organizationId,
+          parent_id: tenants.parentId,
+          deleted_at: tenants.deletedAt,
+          created_at: tenants.createdAt,
+        })
+        .from(tenants)
+        .where(whereClause)
+        .orderBy(sql`created_at DESC`)
+        .all()
+      : ctx.db
+        .select({
+          id: tenants.id,
+          slug: tenants.slug,
+          name: tenants.name,
+          organization_id: tenants.organizationId,
+          parent_id: tenants.parentId,
+          deleted_at: tenants.deletedAt,
+          created_at: tenants.createdAt,
+        })
+        .from(tenants)
+        .orderBy(sql`created_at DESC`)
+        .all());
+
+  return { tenants: rows, total };
 }
 
 /**

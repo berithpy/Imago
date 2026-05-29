@@ -7,6 +7,8 @@ import { TenantDashboard } from "@/client/pages/TenantDashboard";
 import { AdminSetup } from "@/client/pages/AdminSetup";
 import { GalleryManagementPage } from "@/client/pages/GalleryManagementPage";
 import { OperatorDashboard } from "@/client/pages/OperatorDashboard";
+import { OperatorTenants } from "@/client/pages/OperatorTenants";
+import { OperatorUsers } from "@/client/pages/OperatorUsers";
 import { UniversalLogin } from "@/client/pages/UniversalLogin";
 import { LoginResolve } from "@/client/pages/LoginResolve";
 import { Landing } from "@/client/pages/Landing";
@@ -45,6 +47,8 @@ export default function App() {
       {/* Operator (super-admin) routes */}
       <Route path="/operator/setup" element={<AdminSetup />} />
       <Route path="/operator" element={<OperatorDashboard />} />
+      <Route path="/operator/tenants" element={<OperatorTenants />} />
+      <Route path="/operator/users" element={<OperatorUsers />} />
 
       {/* Legacy /gallery/:slug URLs — show a helpful error */}
       <Route path="/gallery/:gallerySlug" element={<LegacyGalleryRedirect />} />
