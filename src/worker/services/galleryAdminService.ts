@@ -534,7 +534,7 @@ export async function uploadPhoto(
     const galleryUrl = `${input.appOrigin}/${gallery.tenantSlug}/${gallery.slug}`;
     notify = Promise.all(
       subs.map((s) =>
-        sendEmail(ctx.env.RESEND_API_KEY, ctx.env.FROM_EMAIL, {
+        sendEmail(ctx.env.EMAIL, ctx.env.EMAIL_DOMAIN, "notifications", {
           to: s.email,
           subject: `New photo added to ${gallery.name}`,
           html: newPhotosHtml(gallery.name, galleryUrl, 1),
@@ -680,7 +680,7 @@ export async function addAllowedEmail(
   const galleryUrl = gallery.tenantSlug
     ? `${input.appOrigin}/${gallery.tenantSlug}/${gallery.slug}`
     : `${input.appOrigin}/${gallery.slug}`;
-  await sendEmail(ctx.env.RESEND_API_KEY, ctx.env.FROM_EMAIL, {
+  await sendEmail(ctx.env.EMAIL, ctx.env.EMAIL_DOMAIN, "invite", {
     to: input.email,
     subject: `You've been invited to view ${gallery.name}`,
     html: invitedUserHtml(gallery.name, galleryUrl, input.email),

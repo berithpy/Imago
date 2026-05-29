@@ -32,5 +32,5 @@ raw helpers once their phase has landed.
 
 Service tests live in `src/worker/services/__tests__/` and reuse the
 harness from `src/worker/routes/__tests__/testHarness.ts` — real D1,
-stubbed R2/Images, mocked Resend. Route tests stay as the parity gate
+stubbed R2/Images, mocked email send calls. Route tests stay as the parity gate
 during each port.

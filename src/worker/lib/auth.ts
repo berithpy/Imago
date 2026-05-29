@@ -28,7 +28,7 @@ export function auth(env: Bindings, origin?: string) {
         sendMagicLink: async ({ email, url }) => {
           const adminRow = await db.select({ email: schema.user.email }).from(schema.user).limit(1);
           const isAdmin = adminRow.length > 0 && adminRow[0].email.toLowerCase() === email.toLowerCase();
-          await sendEmail(env.RESEND_API_KEY, env.FROM_EMAIL, {
+          await sendEmail(env.EMAIL, env.EMAIL_DOMAIN, "login", {
             to: email,
             subject: "Your sign-in link",
             html: isAdmin ? adminMagicLinkHtml(url) : magicLinkHtml("the gallery", url),
@@ -39,7 +39,7 @@ export function auth(env: Bindings, origin?: string) {
         allowUserToCreateOrganization: false,
         async sendInvitationEmail(data) {
           const acceptUrl = `${appUrl}/accept-invitation/${data.id}`;
-          await sendEmail(env.RESEND_API_KEY, env.FROM_EMAIL, {
+          await sendEmail(env.EMAIL, env.EMAIL_DOMAIN, "invite", {
             to: data.email,
             subject: `You've been invited to ${data.organization.name}`,
             html: orgInvitationHtml(

@@ -132,7 +132,7 @@ export async function subscribeToGallery(
   }
 
   const confirmUrl = `${input.appOrigin}/api/subscribe/confirm?token=${encodeURIComponent(confirmToken)}`;
-  await sendEmail(ctx.env.RESEND_API_KEY, ctx.env.FROM_EMAIL, {
+  await sendEmail(ctx.env.EMAIL, ctx.env.EMAIL_DOMAIN, "notifications", {
     to: email,
     subject: `Confirm your subscription to ${gallery.name}`,
     html: subscriptionConfirmationHtml(gallery.name, confirmUrl),
@@ -180,7 +180,7 @@ export async function confirmSubscription(
     throw new ServiceError("INTERNAL", "Subscriber row vanished mid-confirm");
   }
 
-  await sendEmail(ctx.env.RESEND_API_KEY, ctx.env.FROM_EMAIL, {
+  await sendEmail(ctx.env.EMAIL, ctx.env.EMAIL_DOMAIN, "notifications", {
     to: subscriber.email,
     subject: `You're subscribed to ${subscriber.galleryName}`,
     html: subscriptionConfirmedHtml(subscriber.galleryName),
@@ -215,7 +215,7 @@ export async function unsubscribeFromGallery(
   await ctx.db.delete(gallerySubscribers).where(eq(gallerySubscribers.token, token));
 
   if (subscriber) {
-    await sendEmail(ctx.env.RESEND_API_KEY, ctx.env.FROM_EMAIL, {
+    await sendEmail(ctx.env.EMAIL, ctx.env.EMAIL_DOMAIN, "notifications", {
       to: subscriber.email,
       subject: `Unsubscribed from ${subscriber.galleryName}`,
       html: unsubscribeConfirmedHtml(subscriber.galleryName),

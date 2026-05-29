@@ -20,7 +20,7 @@ You may need to set up a cloudflare account and even set your credit card, but t
 - **Auth** - [better-auth](https://better-auth.com) with Drizzle + D1
 - **Database** - Cloudflare D1 (SQLite)
 - **Storage** - Cloudflare R2 + Images
-- **Email** - Resend (to be implemented)
+- **Email** - Cloudflare Email Service (`send_email` Worker binding)
 
 ## Local development
 
@@ -37,7 +37,7 @@ Secrets for local dev go in `.dev.vars`:
 JWT_SECRET=...
 BETTER_AUTH_SECRET=...
 ADMIN_RESET_SECRET=...
-RESEND_API_KEY=...
+EMAIL_DOMAIN=yourdomain.com
 ```
 
 ## Deployment

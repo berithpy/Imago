@@ -4,7 +4,7 @@
 
 - [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/) installed and authenticated (see below)
 - A Cloudflare account with Workers, D1, and R2 enabled
-- A [Resend](https://resend.com) account with an API key
+- A domain on Cloudflare DNS onboarded for [Cloudflare Email Service](https://developers.cloudflare.com/email-service/get-started/send-emails/)
 
 ### Authenticating with Cloudflare
 
@@ -47,16 +47,14 @@ npx wrangler r2 bucket create imago-images
 npx wrangler d1 migrations apply imago-db --remote
 ```
 
-### 4. Configure Resend email
+### 4. Configure Cloudflare Email Service
 
-1. Create a free account at [resend.com](https://resend.com)
-2. **Verify a sending domain** — go to **Resend → Domains → Add Domain** and follow the DNS instructions. Alternatively you can use the Resend sandbox domain `onboarding@resend.dev` for testing (delivers only to the account owner's email).
-3. **Create an API key** — go to **Resend → API Keys → Create API Key** (give it "Send" access only).
-4. Set your secrets and vars:
-   - Add `RESEND_API_KEY` to `.prod.vars` then run `npm run secrets:push` (the key is a secret, never put it in `wrangler.jsonc`).
-   - Add `FROM_EMAIL=noreply@yourdomain.com` to `.prod.vars` with your verified sender address, then run `npm run secrets:push`.
+1. In Cloudflare dashboard, open **Email Sending** and onboard your domain.
+2. Add the DNS records Cloudflare provides (SPF, DKIM, DMARC, and bounce records under `cf-bounce`).
+3. Wait until onboarding is active for the domain.
+4. Add `EMAIL_DOMAIN=yourdomain.com` to `.prod.vars` with your onboarded sending domain, then run `npm run secrets:push`.
 
-> **Note:** If `RESEND_API_KEY` is missing or is the placeholder value, the worker will log a warning and silently skip all email sends — the app continues to function normally without email delivery.
+> **Note:** Email sending uses the Worker `send_email` binding and does not require an API key. If the binding is missing, the worker logs a warning and skips sends so the app continues to function.
 
 ---
 
@@ -121,7 +119,7 @@ npm run db:migrate:local
 npm run dev
 ```
 
-> **Email in local dev:** `setup:dev` sets `RESEND_API_KEY` to a placeholder. Emails won't be sent — instead a warning is logged to the wrangler console. To test real email delivery locally, replace the `RESEND_API_KEY` and `FROM_EMAIL` values in `.dev.vars` with your actual key and a verified sender address.
+> **Email in local dev:** local development uses the Worker `send_email` binding. Ensure the domain is onboarded and set `EMAIL_DOMAIN` in `.dev.vars` to that domain when you want to verify real email delivery.
 
 ### Ongoing local development
 

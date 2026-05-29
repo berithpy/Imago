@@ -25,13 +25,13 @@ When a tenant uploads photos to a gallery, any verified subscribers for that gal
 - **No slowdown.** Sending email must not happen inline with the upload request. The upload route should record that a notification is pending (e.g. update a `last_upload_at` timestamp on the gallery), and the scheduled worker handles the actual send during its daily run.
 - **Only galleries with subscribers.** If a gallery has no verified subscribers, no email is sent and no work is done.
 
-The daily cron should find all galleries where photos were uploaded since the last notification was sent, collect their verified subscriber emails, and dispatch a single Resend batch call per gallery. After sending, record the time so the same gallery is not notified again until the next upload.
+The daily cron should find all galleries where photos were uploaded since the last notification was sent, collect their verified subscriber emails, and dispatch one Cloudflare Email Service send per gallery (or equivalent batching when available). After sending, record the time so the same gallery is not notified again until the next upload.
 
 ---
 
 ## Email & Notifications
 
-The email sending layer (`src/worker/lib/email.ts`) is currently stubbed. Before any of the notification features below can work, the Resend integration needs to be completed — the API key is already set in `.dev.vars` and `.prod.vars`, the function just needs to make the real API call.
+The email sending layer (`src/worker/lib/email.ts`) should use Cloudflare Email Service through the Worker `send_email` binding. Before any of the notification features below can work, domain onboarding and sender setup need to be completed so sends are accepted.
 
 Once that is done, the following flows should be wired up:
 
@@ -58,7 +58,7 @@ Multi-tenant apps need guardrails so one tenant cannot consume unbounded resourc
 - **Photos per gallery** — controls per-gallery query performance and storage growth.
 - **Total storage per tenant** — the real cost driver since R2 charges per GB stored.
 - **Allowed-email entries per gallery** — prevents using Imago as an email harvesting tool.
-- **Subscribers per gallery** — controls Resend usage since email sends cost money.
+- **Subscribers per gallery** — controls email-service usage since email sends cost money.
 
 ### Schema additions needed
 
@@ -236,7 +236,3 @@ This keeps us moving now with a reliable manual path while preserving a clean ru
 
 We should rethink that users table to be first a list of tenants and then when you click the tenant it shows you all the users in that tenants, we allready have a tenant list on that page, so we could add a search bar for the tenants and then add a button to se the users associated with that tenant, we should consider the operator users as well, how to get them
 
-
-
---- 
-### Replace resend with cloudflare's email sending service

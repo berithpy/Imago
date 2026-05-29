@@ -27,10 +27,11 @@ APP_URL=http://localhost:5173
 JWT_SECRET=${secret()}
 BETTER_AUTH_SECRET=${secret()}
 ADMIN_RESET_SECRET=${secret(16)}
-RESEND_API_KEY=re_placeholder
-FROM_EMAIL=noreply@example.com
+EMAIL_DOMAIN=example.com
 `;
 
 writeFileSync(target, contents, "utf8");
 console.log(".dev.vars created with fresh random secrets.");
-console.log("Remember to set RESEND_API_KEY if you need email functionality.");
+console.log(
+  "Set EMAIL_DOMAIN to an onboarded Cloudflare Email Service domain if needed.",
+);

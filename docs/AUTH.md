@@ -17,7 +17,7 @@ Used for **admin users** and **gallery viewers who sign in via magic link**.
 - The single better-auth instance is created per-request in `src/worker/lib/auth.ts` because the Cloudflare Workers env is only available at runtime
 
 Plugins enabled:
-- **`magicLink`** — 10-min token, sent via Resend. Used by both admin login and gallery viewer login
+- **`magicLink`** — 10-min token, sent via Cloudflare Email Service. Used by both admin login and gallery viewer login
 - **`emailOTP`** — still configured (used by the emergency recovery-by-email flow); not exposed on any login UI
 
 ### 2. Viewer JWT cookie (`viewer_token`)
@@ -216,8 +216,7 @@ Applied to all gallery photo/data routes. Resolution order:
 | `BETTER_AUTH_SECRET` | Yes | Signs better-auth session tokens. Must be 32+ chars. |
 | `JWT_SECRET` | Yes | Signs viewer JWT cookies. |
 | `APP_URL` | Yes | Base URL of the app (`https://imago.berith.moe` in prod, `http://localhost:5173` locally). Used as better-auth's `baseURL` and to determine `secure` cookie flag. |
-| `RESEND_API_KEY` | Yes | Sends magic link and OTP emails. |
-| `FROM_EMAIL` | Yes | Sender address for Resend emails. |
+| `EMAIL_DOMAIN` | Yes | Sending domain for Cloudflare Email Service emails. The worker derives addresses like `login@yourdomain.com` or `notifications@yourdomain.com`. |
 | `ADMIN_RESET_SECRET` | Optional | Enables emergency `/api/viewer/admin/reset` and `/api/viewer/admin/recover` routes. |
 
 ---

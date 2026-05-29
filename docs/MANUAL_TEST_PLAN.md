@@ -25,8 +25,7 @@ npm run dev
 
 For real magic-link testing locally, `.dev.vars` must contain valid values for:
 
-- `RESEND_API_KEY`
-- `FROM_EMAIL`
+- `EMAIL_DOMAIN`
 - `APP_URL=http://localhost:5173`
 
 ### Production
@@ -34,7 +33,7 @@ For real magic-link testing locally, `.dev.vars` must contain valid values for:
 Confirm these are already correct:
 
 - `APP_URL=https://imago.berith.moe`
-- Resend sender is valid
+- Cloudflare Email Service sender is valid
 - latest deploy is live
 
 ---

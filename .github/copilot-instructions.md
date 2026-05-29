@@ -40,7 +40,7 @@ Worker route tests live in `src/worker/routes/__tests__/`. See `testHarness.ts` 
 
 - Tests use a real D1 database via `wrangler getPlatformProxy({ persist: false })` — no in-memory mocks for DB or auth logic
 - R2 and Cloudflare Images bindings are stubbed at the binding level
-- Email (Resend) is mocked — tests assert the call was made, not delivery
+- Email (Cloudflare Email Service binding) is mocked — tests assert the call was made, not delivery
 - Each test file uses `beforeAll` / `afterAll` with the harness; use `resetDb()` between test cases
 - Do not add new mocking layers for business logic — test against real SQL
 

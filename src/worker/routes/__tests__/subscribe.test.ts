@@ -128,8 +128,9 @@ describe("subscribe routes", () => {
 
     expect(mockSendEmail).toHaveBeenCalledTimes(1);
     expect(mockSendEmail).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.any(String),
+      expect.objectContaining({ send: expect.any(Function) }),
+      "example.com",
+      "notifications",
       expect.objectContaining({ to: "email-confirm@example.com" })
     );
   });
@@ -152,8 +153,9 @@ describe("subscribe routes", () => {
 
     expect(mockSendEmail).toHaveBeenCalledTimes(1);
     expect(mockSendEmail).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.any(String),
+      expect.objectContaining({ send: expect.any(Function) }),
+      "example.com",
+      "notifications",
       expect.objectContaining({ to: "unsub-email@example.com" })
     );
   });

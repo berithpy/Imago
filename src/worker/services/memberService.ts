@@ -190,7 +190,7 @@ export async function inviteMember(
 
   // Best-effort notification email.
   try {
-    await sendEmail(ctx.env.RESEND_API_KEY, ctx.env.FROM_EMAIL, {
+    await sendEmail(ctx.env.EMAIL, ctx.env.EMAIL_DOMAIN, "invite", {
       to: email,
       subject: "You've been invited to Imago",
       html: invitedUserHtml("the team", input.appOrigin, email),

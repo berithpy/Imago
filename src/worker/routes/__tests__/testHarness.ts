@@ -95,8 +95,10 @@ export async function createWorkerTestHarness(): Promise<WorkerTestHarness> {
     JWT_SECRET: "test-jwt-secret",
     BETTER_AUTH_SECRET: "test-better-auth-secret",
     ADMIN_RESET_SECRET: "test-admin-reset-secret",
-    RESEND_API_KEY: "test-resend-key",
-    FROM_EMAIL: "noreply@example.com",
+    EMAIL: {
+      send: async () => ({ messageId: "test-message-id" }),
+    },
+    EMAIL_DOMAIN: "example.com",
     APP_URL: "http://localhost:5173",
   };
 

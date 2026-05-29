@@ -40,6 +40,12 @@
   "images": {
     "binding": "IMAGES",
   },
+  "send_email": [
+    {
+      "name": "EMAIL",
+      "remote": true,
+    },
+  ],
   /**
    * Smart Placement
    * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
@@ -59,7 +65,7 @@
    */
   // vars are set via .dev.vars (local) and .prod.vars + npm run secrets:push (production)
   "vars": {
-    "FROM_EMAIL": "auth-imago@berith.moe",
+    "EMAIL_DOMAIN": "berith.moe",
   },
   /**
    * Service Bindings (communicate between multiple Workers)

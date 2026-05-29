@@ -1,38 +1,50 @@
-const RESEND_API_URL = "https://api.resend.com/emails";
+/**
+ * Minimal shape of the Cloudflare Email Service Workers binding
+ * (`send_email` in wrangler.jsonc). The generated worker-configuration.d.ts
+ * still describes the legacy Email Routing MIME interface, so we declare the
+ * Email Service `send` signature we actually use here.
+ */
+export interface EmailBinding {
+  send(message: {
+    to: string;
+    from: string;
+    subject: string;
+    html: string;
+    text?: string;
+  }): Promise<{ messageId: string }>;
+}
 
-const PLACEHOLDER_KEYS = new Set(["your-resend-api-key", "placeholder", "changeme", "test"]);
+export type EmailSenderLocalPart = "login" | "invite" | "notifications";
 
-function isPlaceholder(apiKey: string): boolean {
-  return !apiKey || PLACEHOLDER_KEYS.has(apiKey.toLowerCase());
+export function buildSenderAddress(emailDomain: string, localPart: EmailSenderLocalPart): string {
+  return `${localPart}@${emailDomain.trim().replace(/^@+/, "")}`;
 }
 
 export async function sendEmail(
-  apiKey: string,
-  fromEmail: string,
+  email: EmailBinding | undefined,
+  emailDomain: string | undefined,
+  fromLocalPart: EmailSenderLocalPart,
   opts: { to: string; subject: string; html: string }
 ): Promise<void> {
-  if (isPlaceholder(apiKey)) {
-    console.warn(`[email] RESEND_API_KEY not configured — skipping send to ${opts.to}`);
+  if (!email) {
+    console.warn(`[email] EMAIL binding not configured — skipping send to ${opts.to}`);
     return;
   }
 
-  const res = await fetch(RESEND_API_URL, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: fromEmail,
+  if (!emailDomain?.trim()) {
+    console.warn(`[email] EMAIL_DOMAIN not configured — skipping send to ${opts.to}`);
+    return;
+  }
+
+  try {
+    await email.send({
+      from: buildSenderAddress(emailDomain, fromLocalPart),
       to: opts.to,
       subject: opts.subject,
       html: opts.html,
-    }),
-  });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => "(no body)");
-    console.error(`[email] Resend API error ${res.status}: ${body}`);
+    });
+  } catch (err) {
+    console.error(`[email] Email Service send failed for ${opts.to}:`, err);
   }
 }
 

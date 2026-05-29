@@ -14,6 +14,7 @@ import { tenantsRoutes } from "./routes/tenants";
 import { ogImageRoutes } from "./routes/ogImage";
 import { ogPreviewRoutes } from "./routes/ogPreview";
 import { meRoutes } from "./routes/me";
+import type { EmailBinding } from "./lib/email";
 
 export type Bindings = {
   IMAGES_BUCKET: R2Bucket;
@@ -24,9 +25,10 @@ export type Bindings = {
   JWT_SECRET: string;
   BETTER_AUTH_SECRET: string;
   ADMIN_RESET_SECRET: string;
-  RESEND_API_KEY: string;
+  // Email Service Workers binding (send_email)
+  EMAIL: EmailBinding;
   // Vars
-  FROM_EMAIL: string;
+  EMAIL_DOMAIN: string;
   APP_URL: string;
 };
 
