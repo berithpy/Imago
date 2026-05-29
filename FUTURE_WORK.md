@@ -153,13 +153,6 @@ This is a strong feature block and it fits the product well. The only real cauti
 
 When a super-admin creates a new tenant, the first admin user for that tenant should receive an invitation email instead of having credentials created manually. The `invitation` table already exists in the schema from better-auth and can be used to implement this flow. The email should contain a link to set a password or accept the invitation, and the registration should be gated to that email address.
 
-
----
-
-## Per-Gallery Password Rotation
-
-Allow tenant admins to change a gallery password without immediately invalidating all existing viewer sessions and bookmarks. Implement a grace period where both the old and new password hashes remain valid for authentication. After the grace period expires, only the new password works. This gives viewers time to update their bookmarks or receive a notification email about the change.
-
 ---
 
 ## Workers KV for Subscribers
@@ -189,8 +182,6 @@ Once the client module is stable, swapping the underlying `fetch` for Hono's `hc
 ### Suggested rollout
 
 The work is incremental and does not require a big-bang migration. Introduce the client module and one domain wrapper, migrate one page (the admin dashboards are the highest-value target since they already exhibited a redirect-loop bug), then expand from there. React Query and `hc` can each be adopted later without rewriting consumers.
-
-
 
 ---
 
@@ -232,7 +223,12 @@ Users should eventually be able to create their own tenant, but this should ship
 This keeps us moving now with a reliable manual path while preserving a clean runway for eventual self-serve onboarding.
 
 --- 
-### Tenant filter on operator dashboard
 
-We should rethink that users table to be first a list of tenants and then when you click the tenant it shows you all the users in that tenants, we allready have a tenant list on that page, so we could add a search bar for the tenants and then add a button to se the users associated with that tenant, we should consider the operator users as well, how to get them
+### Gallery filter for tenant
+
+Tenant dashboard Gallery list should maybe support filtering by name, date, galleries should also support some kind of tag system which would allow a tenant to categorize their galleries in basic text tags, this tags should be something like studio, event, family etc
+We should consider how to not make this filtering slow
+
+
+
 

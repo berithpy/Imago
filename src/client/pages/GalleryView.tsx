@@ -12,6 +12,11 @@ import { shareUrl } from "@/client/lib/share";
 import { AppShell } from "@/client/components/shell/AppShell";
 import { Button } from "@/client/components/Button";
 import { track, setUserProperties } from "@/client/lib/analytics";
+import {
+  getActivePhotoIndex,
+  getAdjacentPreloadPhotos,
+  getNavigationTargetIndex,
+} from "@/client/lib/lightboxNavigation";
 
 type Photo = {
   id: string;
@@ -110,6 +115,7 @@ export function GalleryView() {
   const loadingMoreRef = useRef(false);
   const observerRef = useRef<IntersectionObserver | null>(null);
   const analyticsFiredKeyRef = useRef<string | null>(null);
+  const preloadedPhotoIdsRef = useRef<Set<string>>(new Set());
   const getPhotoIdFromPathRef = useRef(getPhotoIdFromPath);
   const initialRoutePhotoIdRef = useRef(routePhotoId);
   const initialDeepLinkScrollCompleteRef = useRef(!routePhotoId);
@@ -281,6 +287,41 @@ export function GalleryView() {
     setRoutePhotoId(undefined);
   }, [gallerySlug, routeBase]);
 
+  const activePhotoIndex = getActivePhotoIndex(photos, lightbox?.id);
+  const canPrev = activePhotoIndex > 0;
+  const canNext = activePhotoIndex >= 0 && activePhotoIndex < photos.length - 1;
+
+  const navigateLightboxByOffset = useCallback((offset: -1 | 1) => {
+    if (!lightbox) return;
+    const currentIndex = getActivePhotoIndex(photos, lightbox.id);
+    const targetIndex = getNavigationTargetIndex(currentIndex, photos.length, offset);
+    if (targetIndex < 0) return;
+    openLightbox(photos[targetIndex]);
+  }, [lightbox, photos, openLightbox]);
+
+  const openPreviousPhoto = useCallback(() => {
+    navigateLightboxByOffset(-1);
+  }, [navigateLightboxByOffset]);
+
+  const openNextPhoto = useCallback(() => {
+    navigateLightboxByOffset(1);
+  }, [navigateLightboxByOffset]);
+
+  useEffect(() => {
+    if (!lightbox) return;
+    const currentIndex = getActivePhotoIndex(photos, lightbox.id);
+    const neighbors = getAdjacentPreloadPhotos(photos, currentIndex);
+
+    for (const neighbor of neighbors) {
+      if (preloadedPhotoIdsRef.current.has(neighbor.id)) continue;
+      preloadedPhotoIdsRef.current.add(neighbor.id);
+      void fetch(`/api/images/${neighbor.r2_key}?variant=full`, { credentials: "include" })
+        .catch(() => {
+          // Preload failures should not affect visible navigation.
+        });
+    }
+  }, [lightbox, photos]);
+
   const setSentinel = useCallback((node: HTMLDivElement | null) => {
     if (observerRef.current) {
       observerRef.current.disconnect();
@@ -435,6 +476,12 @@ export function GalleryView() {
                 alt={lightbox.original_name}
                 filename={lightbox.original_name}
                 onClose={closeLightbox}
+                onPrev={openPreviousPhoto}
+                onNext={openNextPhoto}
+                canPrev={canPrev}
+                canNext={canNext}
+                currentPosition={Math.max(activePhotoIndex + 1, 1)}
+                totalCount={Math.max(photos.length, 1)}
               />
             )}
           </>
