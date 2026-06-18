@@ -99,7 +99,7 @@ export async function recoverAdmin(
     throw new ServiceError("FORBIDDEN", "Invalid reset secret");
   }
   await ctx.db.delete(user).run();
-  await logAdminEvent(ctx.env.DB, "ADMIN_RECOVER", { actorTypeOverride: "system" });
+  await logAdminEvent(ctx.db, "ADMIN_RECOVER", { actorTypeOverride: "system" });
 }
 
 /**
@@ -176,64 +176,150 @@ export async function listPlatformUsers(
   if (!input.actor.user) throw new ServiceError("UNAUTHORIZED", "Unauthorized");
   if (!input.actor.superAdmin) throw new ServiceError("FORBIDDEN", "Forbidden");
 
-  // `is_super_admin` is now derived from membership in the platform org.
-  // Surface as 0/1 so existing UIs keep their shape without a translation
-  // layer. We keep raw SQL here because the EXISTS subquery is awkward to
-  // express through Drizzle without losing the inline column projection.
-  const SUPER_ADMIN_EXPR = `(
+  // `is_super_admin` is derived from membership in the platform org.
+  // Keep it as 0/1 for API parity with existing UI payload contracts.
+  const superAdminExpr = sql<number>`(
     EXISTS (
       SELECT 1 FROM member im
       JOIN organization io ON io.id = im.organizationId
-      WHERE im.userId = u.id AND io.slug = '${PLATFORM_ORG_SLUG}' AND im.role = '${ROLE_MAP.IMAGO_OPERATOR}'
+      WHERE im.userId = ${user.id}
+        AND io.slug = ${PLATFORM_ORG_SLUG}
+        AND im.role = ${ROLE_MAP.IMAGO_OPERATOR}
     )
   )`;
 
   const q = (input.q ?? "").trim().toLowerCase();
-  const where: string[] = [];
-  const binds: unknown[] = [];
+  const filters: ReturnType<typeof sql>[] = [];
 
   if (input.tenantId) {
-    where.push("t.id = ?");
-    binds.push(input.tenantId);
+    filters.push(eq(tenants.id, input.tenantId));
   }
 
   if (q) {
-    where.push("(lower(u.name) LIKE ? OR lower(u.email) LIKE ? OR lower(ifnull(t.name, '')) LIKE ?)");
     const like = `%${q}%`;
-    binds.push(like, like, like);
+    filters.push(
+      sql`(
+        lower(${user.name}) LIKE ${like}
+        OR lower(${user.email}) LIKE ${like}
+        OR lower(ifnull(${tenants.name}, '')) LIKE ${like}
+      )`
+    );
   }
 
   if (input.superAdminOnly) {
-    where.push(`${SUPER_ADMIN_EXPR} = 1`);
+    filters.push(sql`${superAdminExpr} = 1`);
   }
 
-  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const whereClause = filters.length ? and(...filters) : undefined;
 
-  const totalQuery = `SELECT count(*) AS count
-    FROM user u
-    LEFT JOIN member m ON m.userId = u.id
-    LEFT JOIN organization o ON o.id = m.organizationId
-    LEFT JOIN tenants t ON t.organization_id = o.id
-    ${whereSql}`;
-  const totalRow = await ctx.env.DB.prepare(totalQuery).bind(...binds).first<{ count: number }>();
+  const totalRow = await (whereClause
+    ? ctx.db
+      .select({ count: sql<number>`count(*)` })
+      .from(user)
+      .leftJoin(member, eq(member.userId, user.id))
+      .leftJoin(organization, eq(organization.id, member.organizationId))
+      .leftJoin(tenants, eq(tenants.organizationId, organization.id))
+      .where(whereClause)
+      .get()
+    : ctx.db
+      .select({ count: sql<number>`count(*)` })
+      .from(user)
+      .leftJoin(member, eq(member.userId, user.id))
+      .leftJoin(organization, eq(organization.id, member.organizationId))
+      .leftJoin(tenants, eq(tenants.organizationId, organization.id))
+      .get());
+
   const total = Number(totalRow?.count ?? 0);
 
   const hasPagination = typeof input.page === "number" && typeof input.pageSize === "number";
-  const paginationSql = hasPagination ? " LIMIT ? OFFSET ?" : "";
-  const paginationBinds = hasPagination
-    ? [...binds, input.pageSize as number, ((input.page as number) - 1) * (input.pageSize as number)]
-    : binds;
+  const rows = await (hasPagination
+    ? whereClause
+      ? ctx.db
+        .select({
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          is_super_admin: superAdminExpr,
+          createdAt: user.createdAt,
+          role: member.role,
+          tenant_id: tenants.id,
+          tenant_name: tenants.name,
+        })
+        .from(user)
+        .leftJoin(member, eq(member.userId, user.id))
+        .leftJoin(organization, eq(organization.id, member.organizationId))
+        .leftJoin(tenants, eq(tenants.organizationId, organization.id))
+        .where(whereClause)
+        .orderBy(sql`${user.createdAt} DESC`)
+        .limit(input.pageSize as number)
+        .offset(((input.page as number) - 1) * (input.pageSize as number))
+        .all()
+      : ctx.db
+        .select({
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          is_super_admin: superAdminExpr,
+          createdAt: user.createdAt,
+          role: member.role,
+          tenant_id: tenants.id,
+          tenant_name: tenants.name,
+        })
+        .from(user)
+        .leftJoin(member, eq(member.userId, user.id))
+        .leftJoin(organization, eq(organization.id, member.organizationId))
+        .leftJoin(tenants, eq(tenants.organizationId, organization.id))
+        .orderBy(sql`${user.createdAt} DESC`)
+        .limit(input.pageSize as number)
+        .offset(((input.page as number) - 1) * (input.pageSize as number))
+        .all()
+    : whereClause
+      ? ctx.db
+        .select({
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          is_super_admin: superAdminExpr,
+          createdAt: user.createdAt,
+          role: member.role,
+          tenant_id: tenants.id,
+          tenant_name: tenants.name,
+        })
+        .from(user)
+        .leftJoin(member, eq(member.userId, user.id))
+        .leftJoin(organization, eq(organization.id, member.organizationId))
+        .leftJoin(tenants, eq(tenants.organizationId, organization.id))
+        .where(whereClause)
+        .orderBy(sql`${user.createdAt} DESC`)
+        .all()
+      : ctx.db
+        .select({
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          is_super_admin: superAdminExpr,
+          createdAt: user.createdAt,
+          role: member.role,
+          tenant_id: tenants.id,
+          tenant_name: tenants.name,
+        })
+        .from(user)
+        .leftJoin(member, eq(member.userId, user.id))
+        .leftJoin(organization, eq(organization.id, member.organizationId))
+        .leftJoin(tenants, eq(tenants.organizationId, organization.id))
+        .orderBy(sql`${user.createdAt} DESC`)
+        .all());
 
-  const usersQuery = `SELECT u.id, u.name, u.email, ${SUPER_ADMIN_EXPR} AS is_super_admin, u.createdAt,
-      m.role, t.id AS tenant_id, t.name AS tenant_name
-    FROM user u
-    LEFT JOIN member m ON m.userId = u.id
-    LEFT JOIN organization o ON o.id = m.organizationId
-    LEFT JOIN tenants t ON t.organization_id = o.id
-    ${whereSql}
-    ORDER BY u.createdAt DESC${paginationSql}`;
-  const { results } = await ctx.env.DB.prepare(usersQuery).bind(...paginationBinds).all();
-  return { users: results, total };
+  const users = rows.map((r) => ({
+    ...r,
+    createdAt:
+      r.createdAt instanceof Date
+        ? Math.floor(r.createdAt.getTime() / 1000)
+        : (r.createdAt as unknown as number),
+    is_super_admin: Number(r.is_super_admin ?? 0),
+  }));
+
+  return { users, total };
 }
 
 export type LegacyInviteInput = {
@@ -287,7 +373,7 @@ export async function inviteLegacyPlatformUser(
     console.error("[users/invite] Failed to send magic link:", err);
   }
 
-  await logEvent(ctx.env.DB, "USER_INVITED", {
+  await logEvent(ctx.db, "USER_INVITED", {
     detail: email,
     actor: input.actor,
     tenantId: input.tenantId ?? null,

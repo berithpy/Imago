@@ -1,9 +1,12 @@
 import { Context, Next } from "hono";
 import { getCookie } from "hono/cookie";
 import { verify } from "hono/jwt";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { Bindings } from "../index";
 import { auth } from "../lib/auth";
+import { getDb, type Db } from "../lib/db";
 import { resolveActorContext, type ActorContext } from "../lib/roles";
+import { galleries, galleryAllowedEmails } from "../lib/schema";
 
 export type ViewerAuthMethod =
   | "public"
@@ -30,15 +33,16 @@ export type AdminJWTPayload = {
 
 /** Returns true when the given gallery slug exists and is publicly accessible (no auth required). */
 async function checkPublicGallery(
-  db: D1Database,
+  db: Db,
   slug: string | undefined
 ): Promise<boolean> {
   if (!slug) return false;
   const gallery = await db
-    .prepare("SELECT is_public FROM galleries WHERE slug = ? AND deleted_at IS NULL")
-    .bind(slug)
-    .first<{ is_public: number }>();
-  return !!gallery?.is_public;
+    .select({ isPublic: galleries.isPublic })
+    .from(galleries)
+    .where(and(eq(galleries.slug, slug), isNull(galleries.deletedAt)))
+    .get();
+  return !!gallery?.isPublic;
 }
 
 /**
@@ -54,9 +58,10 @@ export async function requireViewer(
   next: Next
 ) {
   const slug = c.req.param("slug");
+  const db = getDb(c.env);
 
   // 1. Public gallery — no auth needed
-  if (await checkPublicGallery(c.env.DB, slug)) {
+  if (await checkPublicGallery(db, slug)) {
     c.set("viewerAuthMethod", "public" satisfies ViewerAuthMethod);
     await next();
     return;
@@ -75,11 +80,11 @@ export async function requireViewer(
     if (payload.sub !== "viewer") return c.json({ error: "Forbidden" }, 403);
 
     if (slug) {
-      const gallery = await c.env.DB.prepare(
-        "SELECT id FROM galleries WHERE slug = ?"
-      )
-        .bind(slug)
-        .first<{ id: string }>();
+      const gallery = await db
+        .select({ id: galleries.id })
+        .from(galleries)
+        .where(eq(galleries.slug, slug))
+        .get();
 
       if (!gallery || gallery.id !== payload.galleryId) {
         return c.json({ error: "Forbidden" }, 403);
@@ -103,13 +108,22 @@ export async function requireViewer(
         headers: c.req.raw.headers,
       });
       if (session?.user?.email) {
-        const gallery = await c.env.DB.prepare(
-          "SELECT id FROM galleries WHERE slug = ? AND deleted_at IS NULL"
-        ).bind(slug).first<{ id: string }>();
+        const gallery = await db
+          .select({ id: galleries.id })
+          .from(galleries)
+          .where(and(eq(galleries.slug, slug), isNull(galleries.deletedAt)))
+          .get();
         if (gallery) {
-          const allowed = await c.env.DB.prepare(
-            "SELECT id FROM gallery_allowed_emails WHERE gallery_id = ? AND lower(email) = lower(?)"
-          ).bind(gallery.id, session.user.email).first();
+          const allowed = await db
+            .select({ id: galleryAllowedEmails.id })
+            .from(galleryAllowedEmails)
+            .where(
+              and(
+                eq(galleryAllowedEmails.galleryId, gallery.id),
+                eq(sql`lower(${galleryAllowedEmails.email})`, session.user.email.toLowerCase())
+              )
+            )
+            .get();
           if (allowed) {
             c.set("viewerAuthMethod", "magic_link" satisfies ViewerAuthMethod);
             await next();
@@ -186,7 +200,7 @@ export async function requireViewerOrAdmin(
 ) {
   // Public galleries: allow access without any token
   const slug = c.req.param("slug");
-  if (await checkPublicGallery(c.env.DB, slug)) {
+  if (await checkPublicGallery(getDb(c.env), slug)) {
     await next();
     return;
   }

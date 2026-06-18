@@ -1,3 +1,5 @@
+import type { Db } from "./db";
+import { adminLog as adminLogTable } from "./schema";
 import type { ActorContext, ActorType } from "./roles";
 import { classifyActor } from "./roles";
 
@@ -29,7 +31,7 @@ export type AdminLogOptions = {
  *   logAdminEvent(db, "EVENT", { actor, tenantId, ... })
  */
 export async function logAdminEvent(
-  db: D1Database,
+  db: Db,
   event: string,
   detailOrOptions?: string | AdminLogOptions
 ): Promise<void> {
@@ -54,20 +56,13 @@ export async function logAdminEvent(
         ? tenantId
         : null;
 
-  await db
-    .prepare(
-      `INSERT INTO admin_log
-         (event, detail, actor_type, actor_user_id, tenant_id, visible_to_tenant_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-    )
-    .bind(
-      event,
-      opts.detail ?? null,
-      actorType,
-      actor?.user?.id ?? null,
-      tenantId,
-      visibleToTenantId,
-      Math.floor(Date.now() / 1000)
-    )
-    .run();
+  await db.insert(adminLogTable).values({
+    event,
+    detail: opts.detail ?? null,
+    actorType,
+    actorUserId: actor?.user?.id ?? null,
+    tenantId,
+    visibleToTenantId,
+    createdAt: Math.floor(Date.now() / 1000),
+  }).run();
 }

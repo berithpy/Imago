@@ -84,7 +84,7 @@ export async function updateBranding(
     .where(eq(tenants.id, tenant.id))
     .run();
 
-  await logAdminEvent(ctx.env.DB, "BRANDING_UPDATED", {
+  await logAdminEvent(ctx.db, "BRANDING_UPDATED", {
     actor: input.actor,
     tenantId: tenant.id,
   });
@@ -114,7 +114,7 @@ export async function clearBranding(
     .where(eq(tenants.id, tenant.id))
     .run();
 
-  await logAdminEvent(ctx.env.DB, "BRANDING_CLEARED", {
+  await logAdminEvent(ctx.db, "BRANDING_CLEARED", {
     actor: input.actor,
     tenantId: tenant.id,
   });
@@ -298,6 +298,8 @@ export async function createTenant(
   const tenantId = crypto.randomUUID();
   const orgId = crypto.randomUUID();
 
+  // Escape hatch: keep D1 batch for atomic multi-statement writes in local
+  // test/runtime environments where SQL BEGIN-based transactions are blocked.
   await ctx.env.DB.batch([
     ctx.env.DB.prepare(
       "INSERT INTO organization (id, name, slug, createdAt) VALUES (?, ?, ?, unixepoch())"
@@ -376,13 +378,12 @@ export async function createSubTenant(
   ]);
 
   if (!input.actor.superAdmin && input.actor.user) {
-    const memberId = crypto.randomUUID();
     await ctx.env.DB.prepare(
       "INSERT INTO member (id, userId, organizationId, role, createdAt) VALUES (?, ?, ?, ?, unixepoch())"
-    ).bind(memberId, input.actor.user.id, orgId, ROLES.SUB_TENANT_OPERATOR).run();
+    ).bind(crypto.randomUUID(), input.actor.user.id, orgId, ROLES.SUB_TENANT_OPERATOR).run();
   }
 
-  await logAdminEvent(ctx.env.DB, "SUB_TENANT_CREATED", {
+  await logAdminEvent(ctx.db, "SUB_TENANT_CREATED", {
     detail: input.slug,
     actor: input.actor,
     tenantId,

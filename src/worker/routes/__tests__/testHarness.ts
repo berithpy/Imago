@@ -88,6 +88,7 @@ export async function createWorkerTestHarness(): Promise<WorkerTestHarness> {
   // Use ephemeral local binding state so parallel test workers don't contend
   // for the same persisted D1 sqlite files.
   const platform: Platform = await getPlatformProxy<Bindings>({
+    configPath: "wrangler.test.jsonc",
     persist: false,
   });
   const env: Bindings = {

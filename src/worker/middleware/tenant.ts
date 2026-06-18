@@ -1,5 +1,8 @@
 import { Context, Next } from "hono";
 import { Bindings } from "../index";
+import { getDb } from "../lib/db";
+import { tenants } from "../lib/schema";
+import { and, eq, isNull } from "drizzle-orm";
 
 export type TenantVariables = {
   tenantId?: string;
@@ -19,10 +22,11 @@ export async function requireTenant(
   const slug = c.req.param("tenantSlug");
   if (!slug) return c.json({ error: "Tenant required" }, 400);
 
-  const tenant = await c.env.DB
-    .prepare("SELECT id, slug, name FROM tenants WHERE slug = ? AND deleted_at IS NULL")
-    .bind(slug)
-    .first<{ id: string; slug: string; name: string }>();
+  const tenant = await getDb(c.env)
+    .select({ id: tenants.id, slug: tenants.slug, name: tenants.name })
+    .from(tenants)
+    .where(and(eq(tenants.slug, slug), isNull(tenants.deletedAt)))
+    .get();
 
   if (!tenant) return c.json({ error: "Tenant not found" }, 404);
 

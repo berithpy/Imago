@@ -1,4 +1,6 @@
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
+import { Button } from "@/client/components/Button";
+import { GalleryManagementUploadControl } from "@/client/components/gallery-management/GalleryManagementUploadControl";
 import { exportGallery } from "@/client/lib/exportGallery";
 import { formatDate, type Gallery } from "@/client/lib/galleryManagement";
 import { useTenant } from "@/client/lib/tenantContext";
@@ -10,7 +12,7 @@ type Props = {
   hasPhotos: boolean;
   settingsOpen: boolean;
   onToggleSettings: () => void;
-  uploadControl?: ReactNode;
+  onUploadComplete?: () => void;
 };
 
 function buildAbsoluteUrl(routeBase: string, slug: string): string {
@@ -23,7 +25,7 @@ export function GalleryManagementHeader({
   hasPhotos,
   settingsOpen,
   onToggleSettings,
-  uploadControl,
+  onUploadComplete,
 }: Props) {
   const { apiBase, routeBase } = useTenant();
   const [exporting, setExporting] = useState(false);
@@ -75,6 +77,12 @@ export function GalleryManagementHeader({
         shareState === "failed" ? "Share failed" :
           "Share";
 
+  const copyLabelByState: Record<typeof copyState, string> = {
+    idle: "Copy",
+    copied: "+ Copied!",
+    failed: "failed :(",
+  };
+
   return (
     <div className="flex flex-wrap justify-between items-start mb-8 gap-5">
       <div className="min-w-0">
@@ -92,17 +100,17 @@ export function GalleryManagementHeader({
             >
               {routeBase}/{gallery.slug}
             </a>
-            <button
+            <Button
               onClick={handleCopyUrl}
               title="Copy full URL"
               aria-label="Copy full URL"
-              className="inline-flex items-center justify-center h-7 px-2.5 bg-transparent border border-neutral-800 rounded-md text-neutral-500 text-xs cursor-pointer hover:text-amber-400 hover:border-amber-400 transition-colors"
+              analyticsId="gallery_copy_url"
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2.5 rounded-md text-xs hover:text-amber-400 hover:border-amber-400"
             >
-              {copyState === "copied" ? "+" : copyState === "failed" ? "X" : "Copy"}
-            </button>
-            {copyState === "copied" && (
-              <span className="text-xs text-amber-400">Copied!</span>
-            )}
+              {copyLabelByState[copyState]}
+            </Button>
           </div>
         )}
 
@@ -131,7 +139,7 @@ export function GalleryManagementHeader({
           onClick={onToggleSettings}
           aria-pressed={settingsOpen}
           title={settingsOpen ? "Close settings" : "Open settings"}
-          className={`px-4 py-2 border border-neutral-800 rounded-lg text-neutral-500 text-sm cursor-pointer ${settingsOpen ? "bg-neutral-800" : "bg-transparent"
+          className={`px-4 py-2 border border-neutral-800 rounded-lg text-neutral-100 text-sm cursor-pointer ${settingsOpen ? "bg-neutral-800" : "bg-transparent"
             }`}
         >
           {settingsOpen ? "Close settings" : "Settings"}
@@ -141,7 +149,7 @@ export function GalleryManagementHeader({
             onClick={handleShare}
             title="Share gallery URL"
             className={`px-4 py-2 border rounded-lg text-sm cursor-pointer whitespace-nowrap transition-colors ${shareState === "shared" || shareState === "copied"
-              ? "bg-amber-400 border-amber-400 text-neutral-950 font-semibold"
+              ? "bg-amber-400 border-amber-400 font-semibold"
               : "bg-transparent border-neutral-800 text-neutral-100"
               }`}
           >
@@ -161,7 +169,14 @@ export function GalleryManagementHeader({
             {exportDone ? "Saved!" : exporting ? exportProgress : "Export zip"}
           </button>
         )}
-        {uploadControl && <div className="ml-auto">{uploadControl}</div>}
+        {galleryId && onUploadComplete && (
+          <div className="ml-auto">
+            <GalleryManagementUploadControl
+              galleryId={galleryId}
+              onUploadComplete={onUploadComplete}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

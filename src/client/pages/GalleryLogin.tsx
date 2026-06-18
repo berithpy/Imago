@@ -4,6 +4,8 @@ import { createAuthClient } from "better-auth/client";
 import { LoginCard } from "@/client/components/LoginCard";
 import { SpinnerOverlay } from "@/client/components/Spinner";
 import { useTenant } from "@/client/lib/tenantContext";
+import { buildGalleryLoginMetadata } from "@/client/lib/pageMetadata";
+import { usePageMetadata } from "@/client/lib/usePageMetadata";
 
 const authClient = createAuthClient({ baseURL: `${window.location.origin}/api/auth` });
 
@@ -11,7 +13,7 @@ export function GalleryLogin() {
   const { gallerySlug } = useParams<{ gallerySlug: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const { apiBase, routeBase } = useTenant();
+  const { apiBase, routeBase, tenantName } = useTenant();
   const [isAdmin, setIsAdmin] = useState(false);
   const [galleryId, setGalleryId] = useState<string | null>(null);
   const [galleryName, setGalleryName] = useState<string | null>(null);
@@ -24,6 +26,14 @@ export function GalleryLogin() {
     requestedNext.startsWith(fallbackPath) && !requestedNext.startsWith("//")
       ? requestedNext
       : fallbackPath;
+
+  const metadata = buildGalleryLoginMetadata({
+    galleryName,
+    gallerySlug,
+    tenantName,
+    routeBase,
+  });
+  const pageMetadata = usePageMetadata(metadata);
 
   useEffect(() => {
     fetch(`${apiBase}/galleries/${gallerySlug}`)
@@ -92,22 +102,28 @@ export function GalleryLogin() {
 
   if (checking) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <SpinnerOverlay />
-      </div>
+      <>
+        {pageMetadata}
+        <div className="min-h-screen flex items-center justify-center">
+          <SpinnerOverlay />
+        </div>
+      </>
     );
   }
 
   return (
-    <LoginCard
-      title={galleryName ?? "this gallery"}
-      subtitle="Enter your email to receive a one-time sign-in link."
-      showPasswordFallback
-      showAdminBypass={isAdmin && !!galleryId}
-      bypassLoading={bypassing}
-      onMagicLink={handleMagicLink}
-      onPassword={handlePassword}
-      onAdminBypass={handleAdminBypass}
-    />
+    <>
+      {pageMetadata}
+      <LoginCard
+        title={galleryName ?? "this gallery"}
+        subtitle="Enter your email to receive a one-time sign-in link."
+        showPasswordFallback
+        showAdminBypass={isAdmin && !!galleryId}
+        bypassLoading={bypassing}
+        onMagicLink={handleMagicLink}
+        onPassword={handlePassword}
+        onAdminBypass={handleAdminBypass}
+      />
+    </>
   );
 }

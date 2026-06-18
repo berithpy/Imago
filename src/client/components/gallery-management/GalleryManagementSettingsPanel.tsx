@@ -134,12 +134,6 @@ export function GalleryManagementSettingsPanel({
     >
       <h3 className="font-semibold text-base mb-1">Gallery Settings</h3>
 
-      <GalleryManagementVisibilityToggle
-        isPublic={!!gallery.is_public}
-        disabled={togglingVisibility}
-        onChange={handleToggleVisibility}
-      />
-
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="flex flex-col gap-1.5">
           <label className="text-xs text-neutral-500">Gallery name</label>
@@ -205,11 +199,18 @@ export function GalleryManagementSettingsPanel({
           Cancel
         </button>
       </div>
-
+      <hr className="border-neutral-800" />
+      <GalleryManagementVisibilityToggle
+        isPublic={!!gallery.is_public}
+        loading={togglingVisibility}
+        disabled={togglingVisibility}
+        onChange={handleToggleVisibility}
+      />
       <GalleryManagementPasswordResetSection galleryId={galleryId} />
 
-      <div className="mt-1 pt-4 border-t border-neutral-800">
-        <h4 className="text-sm font-semibold text-red-400 mb-1">Danger zone</h4>
+      <hr className="border-neutral-800" />
+      <div>
+        <h4 className=" mt-1 text-sm font-semibold text-red-400 mb-1">Danger zone</h4>
         {gallery.deleted_at ? (
           <>
             <p className="text-[0.78rem] text-neutral-500 mb-2.5">
@@ -235,10 +236,16 @@ export function GalleryManagementSettingsPanel({
             </div>
           </>
         ) : (
-          <>
-            <p className="text-[0.78rem] text-neutral-500 mb-2.5">
-              Hide this gallery from viewers. You can restore it later.
-            </p>
+          <div className="flex flex-row gap-2.5 justify-between">
+            <span>
+
+              <p className="text-[0.78rem] text-neutral-100">
+                Hide this gallery from viewers.
+              </p>
+              <p className="text-[0.78rem] text-neutral-500">
+                You can restore it later.
+              </p>
+            </span>
             <button
               type="button"
               onClick={handleSoftDelete}
@@ -247,7 +254,7 @@ export function GalleryManagementSettingsPanel({
             >
               <span aria-hidden="true">🗑️</span> Hide gallery
             </button>
-          </>
+          </div>
         )}
       </div>
     </form>

@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { shareUrl } from "@/client/lib/share";
+import { Button, LinkButton } from "@/client/components/Button";
 
 type Props = {
   r2Key: string;
@@ -54,27 +55,36 @@ export function Lightbox({
       </div>
 
       <div className="absolute top-3 right-3 flex gap-2 z-10">
-        <button
+        <Button
           onClick={(e) => { e.stopPropagation(); void handleShare(); }}
+          variant="secondary"
+          size="sm"
+          analyticsId="lightbox_share"
           className="px-3 py-1.5 bg-neutral-900/80 border border-neutral-800 rounded-lg text-neutral-100 text-sm cursor-pointer"
         >
           Share
-        </button>
-        <a
+        </Button>
+        <LinkButton
           href={`/api/images/${r2Key}?variant=full`}
           download={filename}
           onClick={(e) => e.stopPropagation()}
+          variant="secondary"
+          size="sm"
+          analyticsId="lightbox_download"
           className="px-3 py-1.5 bg-neutral-900/80 border border-neutral-800 rounded-lg text-neutral-100 text-sm"
         >
           Download
-        </a>
-        <button
+        </LinkButton>
+        <Button
           onClick={onClose}
           aria-label="Close"
+          variant="secondary"
+          size="sm"
+          analyticsId="lightbox_close"
           className="px-3 py-1.5 bg-neutral-900/80 border border-neutral-800 rounded-lg text-neutral-100 text-sm cursor-pointer"
         >
           Close
-        </button>
+        </Button>
       </div>
 
       <button

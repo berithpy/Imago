@@ -185,12 +185,6 @@ The work is incremental and does not require a big-bang migration. Introduce the
 
 ---
 
-## Migrate Worker Queries to Drizzle
-
-The worker currently uses raw `c.env.DB.prepare(...).bind(...)` calls in every route file, even though Drizzle is already a dependency — it owns the schema in `src/worker/lib/schema.ts`, drives migrations via `npm run db:generate`, and backs the better-auth adapter. The split means the schema lives in TypeScript but every query is hand-written SQL with hand-written result type generics, and the multi-tenant guards (`deleted_at IS NULL`, expiry checks, tenant scoping) are repeated by convention rather than enforced by construction. Migrating the route layer to Drizzle queries would give us result types inferred from the schema, composable predicates for the shared guards, and a single source of truth for both shape and access. The migration should happen file-by-file rather than query-by-query — mixing styles inside one route file is worse than either choice on its own — and `sql\`...\`` stays available as an escape hatch for the handful of queries that genuinely benefit from raw SQL. The existing test suite runs against real D1 via `wrangler getPlatformProxy`, so behavior parity is enforceable as each file is ported.
-
----
-
 ## Tenant Onboarding Flow
 
 Tenant onboarding needs to be treated as a first-class workflow, not just "tenant row created".

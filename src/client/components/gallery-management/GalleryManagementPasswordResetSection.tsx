@@ -34,7 +34,7 @@ export function GalleryManagementPasswordResetSection({ galleryId }: Props) {
   }
 
   return (
-    <div className="mt-2 pt-4 border-t border-neutral-800">
+    <div >
       <label className="text-xs text-neutral-500 block mb-1.5">Reset gallery password</label>
       <PasswordField
         value={newPassword}

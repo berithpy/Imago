@@ -9,6 +9,8 @@ import { Lightbox } from "@/client/components/Lightbox";
 import { exportGallery } from "@/client/lib/exportGallery";
 import { useTenant } from "@/client/lib/tenantContext";
 import { shareUrl } from "@/client/lib/share";
+import { buildGalleryViewMetadata } from "@/client/lib/pageMetadata";
+import { usePageMetadata } from "@/client/lib/usePageMetadata";
 import { AppShell } from "@/client/components/shell/AppShell";
 import { Button } from "@/client/components/Button";
 import { track, setUserProperties } from "@/client/lib/analytics";
@@ -82,7 +84,7 @@ export function GalleryView() {
   const { gallerySlug } = useParams<{ gallerySlug: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const { apiBase, routeBase } = useTenant();
+  const { apiBase, routeBase, tenantName } = useTenant();
 
   const getPhotoIdFromPath = useCallback((pathname: string): string | undefined => {
     if (!gallerySlug) return undefined;
@@ -370,9 +372,20 @@ export function GalleryView() {
         shareState === "failed" ? "Share failed" :
           "Share";
 
+  const metadata = buildGalleryViewMetadata({
+    galleryName,
+    gallerySlug,
+    tenantName,
+    routeBase,
+    bannerKey,
+  });
+  const pageMetadata = usePageMetadata(metadata);
+
   return (
-    <AppShell gallerySlug={gallerySlug}>
-      <div className="min-h-screen p-6">
+    <>
+      {pageMetadata}
+      <AppShell gallerySlug={gallerySlug}>
+        <div className="min-h-screen p-6">
         {expired && (
           <div className="max-w-[480px] mx-auto mt-20 text-center">
             <ErrorMessage message="This gallery has expired and is no longer available." />
@@ -486,7 +499,8 @@ export function GalleryView() {
             )}
           </>
         )}
-      </div>
-    </AppShell>
+        </div>
+      </AppShell>
+    </>
   );
 }

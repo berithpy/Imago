@@ -199,7 +199,7 @@ export async function inviteMember(
     console.error("[members/invite] email failed:", err);
   }
 
-  await logAdminEvent(ctx.env.DB, "MEMBER_INVITED", {
+  await logAdminEvent(ctx.db, "MEMBER_INVITED", {
     detail: email,
     actor: input.actor,
     tenantId: input.tenantId,
@@ -259,7 +259,7 @@ export async function changeMemberRole(
     .where(and(eq(member.userId, input.userId), eq(member.organizationId, orgId)))
     .run();
 
-  await logAdminEvent(ctx.env.DB, "MEMBER_ROLE_CHANGED", {
+  await logAdminEvent(ctx.db, "MEMBER_ROLE_CHANGED", {
     detail: `${input.userId} -> ${role}`,
     actor: input.actor,
     tenantId: input.tenantId,
@@ -303,7 +303,7 @@ export async function removeMember(
     .where(and(eq(member.userId, input.userId), eq(member.organizationId, orgId)))
     .run();
 
-  await logAdminEvent(ctx.env.DB, "MEMBER_REMOVED", {
+  await logAdminEvent(ctx.db, "MEMBER_REMOVED", {
     detail: input.userId,
     actor: input.actor,
     tenantId: input.tenantId,

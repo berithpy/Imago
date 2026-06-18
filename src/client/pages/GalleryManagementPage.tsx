@@ -114,14 +114,7 @@ export function GalleryManagementPage() {
           hasPhotos={photos.length > 0}
           settingsOpen={showSettings}
           onToggleSettings={() => setShowSettings((value) => !value)}
-          uploadControl={
-            galleryId ? (
-              <GalleryManagementUploadControl
-                galleryId={galleryId}
-                onUploadComplete={reloadPhotos}
-              />
-            ) : null
-          }
+          onUploadComplete={galleryId ? reloadPhotos : undefined}
         />
 
         {gallery && (

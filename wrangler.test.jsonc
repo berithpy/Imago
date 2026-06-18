@@ -1,0 +1,50 @@
+/**
+ * Test-only Wrangler config used by route harness via getPlatformProxy({ configPath }).
+ * Mirrors wrangler.jsonc but disables remote send_email preview so tests run
+ * fully locally without edge-preview auth.
+ */
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "imago",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2026-02-26",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "routes": [{ "pattern": "imago.berith.moe", "custom_domain": true }],
+  "assets": {
+    "binding": "ASSETS",
+    "directory": "./dist/client",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": true,
+  },
+  "observability": {
+    "enabled": true,
+  },
+  "r2_buckets": [
+    {
+      "binding": "IMAGES_BUCKET",
+      "bucket_name": "imago-images",
+      "preview_bucket_name": "imago-images-dev",
+    },
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "imago-db",
+      "database_id": "4d9b88ce-b0b8-4df4-8029-336254a8a169",
+      "migrations_dir": "migrations",
+    },
+  ],
+  "images": {
+    "binding": "IMAGES",
+  },
+  "send_email": [
+    {
+      "name": "EMAIL",
+      "remote": false,
+    },
+  ],
+  "vars": {
+    "EMAIL_DOMAIN": "berith.moe",
+  },
+}

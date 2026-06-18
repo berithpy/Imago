@@ -1,5 +1,8 @@
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { Bindings } from "../index";
 import { auth } from "./auth";
+import { getDb } from "./db";
+import { member, organization, tenants, user as userTable } from "./schema";
 
 // Minimal subset of Hono Context we use, so callers can pass any Context
 // generic shape without TypeScript variance complaints. Methods take the
@@ -139,14 +142,15 @@ export async function resolveActorContext(c: RoleContext): Promise<ActorContext>
     c.set("actorContext", ANON);
     return ANON;
   }
+  const db = getDb(c.env);
   const email = session.user.email;
 
-  const user = await c.env.DB.prepare(
-    "SELECT id, name, email FROM user WHERE lower(email) = lower(?)"
-  )
-    .bind(email)
-    .first<{ id: string; name: string; email: string }>();
-  if (!user) {
+  const userRow = await db
+    .select({ id: userTable.id, name: userTable.name, email: userTable.email })
+    .from(userTable)
+    .where(eq(sql`lower(${userTable.email})`, email.toLowerCase()))
+    .get();
+  if (!userRow) {
     c.set("actorContext", ANON);
     return ANON;
   }
@@ -154,50 +158,55 @@ export async function resolveActorContext(c: RoleContext): Promise<ActorContext>
   // Platform-org membership: a single row in the `imago` org with role
   // `imago_operator` makes the user a platform staff member. Replaces the
   // legacy `user.is_super_admin` flag (removed in migration 0011).
-  const imagoMember = await c.env.DB.prepare(
-    `SELECT 1 FROM member m
-     INNER JOIN organization o ON o.id = m.organizationId
-     WHERE m.userId = ? AND o.slug = ? AND m.role = ?
-     LIMIT 1`
-  )
-    .bind(user.id, IMAGO_ORG_SLUG, ROLES.IMAGO_OPERATOR)
-    .first();
+  const imagoMember = await db
+    .select({ id: member.id })
+    .from(member)
+    .innerJoin(organization, eq(organization.id, member.organizationId))
+    .where(
+      and(
+        eq(member.userId, userRow.id),
+        eq(organization.slug, IMAGO_ORG_SLUG),
+        eq(member.role, ROLES.IMAGO_OPERATOR)
+      )
+    )
+    .get();
   const superAdmin = !!imagoMember;
 
-  const { results } = await c.env.DB.prepare(
-    `SELECT t.id   AS tenantId,
-            t.slug AS tenantSlug,
-            t.name AS tenantName,
-            m.role AS role,
-            t.parent_id AS parentTenantId,
-            p.slug      AS parentTenantSlug
-     FROM member m
-     INNER JOIN organization o ON o.id = m.organizationId
-     INNER JOIN tenants t      ON t.organization_id = o.id
-     LEFT  JOIN tenants p      ON p.id = t.parent_id
-     WHERE m.userId = ? AND t.deleted_at IS NULL`
-  )
-    .bind(user.id)
-    .all<{
-      tenantId: string;
-      tenantSlug: string;
-      tenantName: string;
-      role: string;
-      parentTenantId: string | null;
-      parentTenantSlug: string | null;
-    }>();
+  const rows = await db
+    .select({
+      tenantId: tenants.id,
+      tenantSlug: tenants.slug,
+      tenantName: tenants.name,
+      role: member.role,
+      parentTenantId: tenants.parentId,
+    })
+    .from(member)
+    .innerJoin(organization, eq(organization.id, member.organizationId))
+    .innerJoin(tenants, eq(tenants.organizationId, organization.id))
+    .where(and(eq(member.userId, userRow.id), isNull(tenants.deletedAt)))
+    .all();
 
-  const memberships: Membership[] = results.map((r) => ({
+  const parentTenantIds = [...new Set(rows.map((r) => r.parentTenantId).filter((id): id is string => !!id))];
+  const parentRows = parentTenantIds.length
+    ? await db
+      .select({ id: tenants.id, slug: tenants.slug })
+      .from(tenants)
+      .where(inArray(tenants.id, parentTenantIds))
+      .all()
+    : [];
+  const parentSlugById = new Map(parentRows.map((r) => [r.id, r.slug]));
+
+  const memberships: Membership[] = rows.map((r) => ({
     tenantId: r.tenantId,
     tenantSlug: r.tenantSlug,
     tenantName: r.tenantName,
     role: isTenantRole(r.role) ? r.role : ROLES.TENANT_OPERATOR,
     parentTenantId: r.parentTenantId,
-    parentTenantSlug: r.parentTenantSlug,
+    parentTenantSlug: r.parentTenantId ? (parentSlugById.get(r.parentTenantId) ?? null) : null,
   }));
 
   const ctx: ActorContext = {
-    user: { id: user.id, email: user.email, name: user.name },
+    user: { id: userRow.id, email: userRow.email, name: userRow.name },
     superAdmin,
     memberships,
   };

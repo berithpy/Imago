@@ -9,11 +9,16 @@ import {
   type ActorContext,
 } from "../lib/roles";
 import {
+  adminLog as adminLogTable,
+  appConfig,
   galleries,
   galleryAllowedEmails,
   gallerySubscribers,
+  member,
+  organization,
   photos,
   tenants,
+  user,
 } from "../lib/schema";
 import { RESERVED_GALLERY_SUBPATHS } from "../../shared/reservedSlugs";
 import { ServiceError, type ServiceCtx } from "./types";
@@ -180,7 +185,7 @@ export async function createGallery(
     })
     .run();
 
-  await logAdminEvent(ctx.env.DB, "GALLERY_CREATED", {
+  await logAdminEvent(ctx.db, "GALLERY_CREATED", {
     detail: input.slug,
     actor: input.actor,
     tenantId: input.tenantId ?? null,
@@ -608,12 +613,18 @@ export async function listAdminLog(
 ): Promise<unknown[]> {
   if (!actor.user) throw new ServiceError("UNAUTHORIZED", "Unauthorized");
   if (!actor.superAdmin) throw new ServiceError("FORBIDDEN", "Forbidden");
-  // Use raw D1 here — admin_log isn't in the Drizzle schema we want exposed,
-  // but the table shape is stable.
-  const { results } = await ctx.env.DB.prepare(
-    "SELECT id, event, detail, created_at FROM admin_log ORDER BY created_at DESC LIMIT 200"
-  ).all();
-  return results;
+  const rows = await ctx.db
+    .select({
+      id: adminLogTable.id,
+      event: adminLogTable.event,
+      detail: adminLogTable.detail,
+      created_at: adminLogTable.createdAt,
+    })
+    .from(adminLogTable)
+    .orderBy(desc(adminLogTable.createdAt))
+    .limit(200)
+    .all();
+  return rows;
 }
 
 // ------------------------------------------------------------------
@@ -716,7 +727,7 @@ export type AdminSetupInput = {
 };
 
 export async function isAdminConfigured(ctx: ServiceCtx): Promise<boolean> {
-  const row = await ctx.env.DB.prepare("SELECT id FROM user LIMIT 1").first();
+  const row = await ctx.db.select({ id: user.id }).from(user).limit(1).get();
   return !!row;
 }
 
@@ -729,15 +740,14 @@ export async function finalizeAdminSetup(
   ctx: ServiceCtx,
   input: { email: string; recoveryEmail: string | undefined }
 ): Promise<void> {
-  // Use raw D1 here for the existing INSERT-OR-IGNORE pattern; it crosses
-  // tables (organization + member + app_config) and stays atomic via batch.
   const { ROLES: R, IMAGO_ORG_ID, IMAGO_ORG_SLUG } = await import("../lib/roles");
 
-  const newUser = await ctx.env.DB.prepare(
-    "SELECT id FROM user WHERE lower(email) = lower(?)"
-  )
-    .bind(input.email)
-    .first<{ id: string }>();
+  const newUser = await ctx.db
+    .select({ id: user.id })
+    .from(user)
+    .where(eq(sql`lower(${user.email})`, input.email.toLowerCase()))
+    .get();
+
   if (newUser) {
     await ctx.env.DB.batch([
       ctx.env.DB.prepare(
@@ -750,11 +760,11 @@ export async function finalizeAdminSetup(
   }
 
   const resolvedRecovery = input.recoveryEmail?.trim() || input.email;
-  await ctx.env.DB.prepare(
-    "INSERT OR REPLACE INTO app_config (key, value) VALUES ('recovery_email', ?)"
-  )
-    .bind(resolvedRecovery)
+  await ctx.db
+    .insert(appConfig)
+    .values({ key: "recovery_email", value: resolvedRecovery })
+    .onConflictDoUpdate({ target: appConfig.key, set: { value: resolvedRecovery } })
     .run();
 
-  await logAdminEvent(ctx.env.DB, "ADMIN_SETUP", { actorTypeOverride: "system" });
+  await logAdminEvent(ctx.db, "ADMIN_SETUP", { actorTypeOverride: "system" });
 }

@@ -46,3 +46,21 @@
     font-family: inherit;
   }
 }
+
+@keyframes gm-border-pulse {
+
+  0%,
+  100% {
+    box-shadow: 0 0 0 1px rgb(251 191 36 / 0.18), 0 0 0 0 rgb(251 191 36 / 0);
+  }
+
+  50% {
+    box-shadow: 0 0 0 1px rgb(251 191 36 / 0.4), 0 0 0 5px rgb(251 191 36 / 0.12);
+  }
+}
+
+@layer utilities {
+  .gm-animated-border {
+    animation: gm-border-pulse 1.15s ease-in-out infinite;
+  }
+}
