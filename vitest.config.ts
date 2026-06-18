@@ -7,6 +7,6 @@ export default defineConfig({
     // workers try to write concurrently. This slows tests down on all
     // platforms, so remove it once the upstream concurrency issue is fixed:
     // https://github.com/cloudflare/workers-sdk/issues/4716
-    fileParallelism: false,
+    fileParallelism: true,
   },
 });
