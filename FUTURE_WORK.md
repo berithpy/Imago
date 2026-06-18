@@ -229,9 +229,6 @@ The filtering should happen in the worker we should not fetch everything, only t
 Currently when you load a tenant you see all the galleries, besides that, on top we should have a stats section similar to the operator dashboard
 We should also update the tenant shell, currently it says the tenant name and its a button that takes you to the dashboard, this text should still be there but it shouldn't be a button, the current page should be called "dashboard" and should be a button on the shell
 
-### Refactor gallery component file names
-Currently all the gallery files are named something gallery, ideally if they are in a folder we can just call like gallery/something instead of gallery/gallery-something
-Also, rename galleryManagementPage to just GalleryManagement
 
 ### Rework shell 
 When in a tenant, we see imago, tenant name, and this tenant name takes you to the gallery list, we should change this to be imago, tenant name, and then a button that says galleries or dashboard that takes you there

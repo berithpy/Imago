@@ -7,7 +7,7 @@ type Props = {
   buttonLabel?: string;
 };
 
-export function GalleryManagementUploadControl({
+export function UploadControl({
   galleryId,
   onUploadComplete,
   buttonLabel = "+ Upload photos",

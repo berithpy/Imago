@@ -12,7 +12,7 @@ type Props = {
   onGalleryUpdated: (updater: (current: Gallery) => Gallery) => void;
 };
 
-export function GalleryManagementPhotoGrid({
+export function PhotoGrid({
   galleryId,
   gallery,
   photos,

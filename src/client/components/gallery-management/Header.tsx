@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/client/components/Button";
-import { GalleryManagementUploadControl } from "@/client/components/gallery-management/GalleryManagementUploadControl";
+import { UploadControl } from "@/client/components/gallery-management/UploadControl";
 import { exportGallery } from "@/client/lib/exportGallery";
 import { formatDate, type Gallery } from "@/client/lib/galleryManagement";
 import { useTenant } from "@/client/lib/tenantContext";
@@ -19,7 +19,7 @@ function buildAbsoluteUrl(routeBase: string, slug: string): string {
   return `${window.location.origin}${routeBase}/${slug}`;
 }
 
-export function GalleryManagementHeader({
+export function Header({
   galleryId,
   gallery,
   hasPhotos,
@@ -171,7 +171,7 @@ export function GalleryManagementHeader({
         )}
         {galleryId && onUploadComplete && (
           <div className="ml-auto">
-            <GalleryManagementUploadControl
+            <UploadControl
               galleryId={galleryId}
               onUploadComplete={onUploadComplete}
             />

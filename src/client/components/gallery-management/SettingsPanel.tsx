@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { useTenant } from "@/client/lib/tenantContext";
 import type { Gallery } from "@/client/lib/galleryManagement";
 import { toDateInputValue } from "@/client/lib/galleryManagement";
-import { GalleryManagementPasswordResetSection } from "@/client/components/gallery-management/GalleryManagementPasswordResetSection";
-import { GalleryManagementVisibilityToggle } from "@/client/components/gallery-management/GalleryManagementVisibilityToggle";
+import { PasswordResetSection } from "@/client/components/gallery-management/PasswordResetSection";
+import { VisibilityToggle } from "@/client/components/gallery-management/VisibilityToggle";
 
 type Props = {
   galleryId: string;
@@ -20,7 +20,7 @@ const ghostBtnClass =
 const dangerBtnClass =
   "inline-flex items-center gap-1.5 px-4 py-2 bg-transparent border border-neutral-800 rounded-lg text-red-400 text-sm cursor-pointer disabled:opacity-50";
 
-export function GalleryManagementSettingsPanel({
+export function SettingsPanel({
   galleryId,
   gallery,
   onClose,
@@ -200,13 +200,13 @@ export function GalleryManagementSettingsPanel({
         </button>
       </div>
       <hr className="border-neutral-800" />
-      <GalleryManagementVisibilityToggle
+      <VisibilityToggle
         isPublic={!!gallery.is_public}
         loading={togglingVisibility}
         disabled={togglingVisibility}
         onChange={handleToggleVisibility}
       />
-      <GalleryManagementPasswordResetSection galleryId={galleryId} />
+      <PasswordResetSection galleryId={galleryId} />
 
       <hr className="border-neutral-800" />
       <div>

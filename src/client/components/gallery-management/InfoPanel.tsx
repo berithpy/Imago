@@ -5,7 +5,7 @@ type Props = {
   totalBytes: number;
 };
 
-export function GalleryManagementInfoPanel({ photoCount, totalBytes }: Props) {
+export function InfoPanel({ photoCount, totalBytes }: Props) {
   const photoLabel = photoCount === 1 ? "photo" : "photos";
 
   return (

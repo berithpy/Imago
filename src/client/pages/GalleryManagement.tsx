@@ -2,18 +2,18 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { SpinnerOverlay } from "@/client/components/Spinner";
 import { EmptyState } from "@/client/components/EmptyState";
-import { GalleryManagementHeader } from "@/client/components/gallery-management/GalleryManagementHeader";
-import { GalleryManagementInfoPanel } from "@/client/components/gallery-management/GalleryManagementInfoPanel";
-import { GalleryManagementSettingsPanel } from "@/client/components/gallery-management/GalleryManagementSettingsPanel";
-import { GalleryManagementEmailWhitelistSection } from "@/client/components/gallery-management/GalleryManagementEmailWhitelistSection";
-import { GalleryManagementPhotoGrid } from "@/client/components/gallery-management/GalleryManagementPhotoGrid";
-import { GalleryManagementUploadControl } from "@/client/components/gallery-management/GalleryManagementUploadControl";
+import { Header } from "@/client/components/gallery-management/Header";
+import { InfoPanel } from "@/client/components/gallery-management/InfoPanel";
+import { SettingsPanel } from "@/client/components/gallery-management/SettingsPanel";
+import { EmailWhitelistSection } from "@/client/components/gallery-management/EmailWhitelistSection";
+import { PhotoGrid } from "@/client/components/gallery-management/PhotoGrid";
+import { UploadControl } from "@/client/components/gallery-management/UploadControl";
 import type { Gallery, Photo } from "@/client/lib/galleryManagement";
 import { useTenant } from "@/client/lib/tenantContext";
 import { useAuth } from "@/client/lib/authContext";
 import { AppShell } from "@/client/components/shell/AppShell";
 
-export function GalleryManagementPage() {
+export function GalleryManagement() {
   const { gallerySlug } = useParams<{ gallerySlug: string }>();
   const navigate = useNavigate();
   const { apiBase, routeBase, tenantSlug } = useTenant();
@@ -108,7 +108,7 @@ export function GalleryManagementPage() {
   return (
     <AppShell gallerySlug={gallerySlug}>
       <div className="max-w-[1100px] mx-auto px-6 py-10">
-        <GalleryManagementHeader
+        <Header
           galleryId={galleryId ?? ""}
           gallery={gallery}
           hasPhotos={photos.length > 0}
@@ -119,20 +119,20 @@ export function GalleryManagementPage() {
 
         {gallery && (
           <div className="mb-8">
-            <GalleryManagementInfoPanel photoCount={photos.length} totalBytes={totalBytes} />
+            <InfoPanel photoCount={photos.length} totalBytes={totalBytes} />
           </div>
         )}
 
         {showSettings && gallery && (
           <>
-            <GalleryManagementSettingsPanel
+            <SettingsPanel
               galleryId={gallery.id}
               gallery={gallery}
               onClose={() => setShowSettings(false)}
               onGalleryUpdated={updateGallery}
               onPermanentDeleteSuccess={() => navigate(`${routeBase}/manage`)}
             />
-            <GalleryManagementEmailWhitelistSection galleryId={gallery.id} />
+            <EmailWhitelistSection galleryId={gallery.id} />
           </>
         )}
 
@@ -143,7 +143,7 @@ export function GalleryManagementPage() {
             message="No photos yet."
             action={
               galleryId ? (
-                <GalleryManagementUploadControl
+                <UploadControl
                   galleryId={galleryId}
                   onUploadComplete={reloadPhotos}
                   buttonLabel="Upload your first photo"
@@ -153,7 +153,7 @@ export function GalleryManagementPage() {
           />
         ) : (
           gallery && (
-            <GalleryManagementPhotoGrid
+            <PhotoGrid
               galleryId={gallery.id}
               gallery={gallery}
               photos={photos}

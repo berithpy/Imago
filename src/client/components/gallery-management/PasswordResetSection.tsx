@@ -6,7 +6,7 @@ type Props = {
   galleryId: string;
 };
 
-export function GalleryManagementPasswordResetSection({ galleryId }: Props) {
+export function PasswordResetSection({ galleryId }: Props) {
   const { apiBase } = useTenant();
   const [newPassword, setNewPassword] = useState("");
   const [resettingPassword, setResettingPassword] = useState(false);

@@ -5,7 +5,7 @@ import { GalleryView } from "@/client/pages/GalleryView";
 import { TenantLogin } from "@/client/pages/TenantLogin";
 import { TenantDashboard } from "@/client/pages/TenantDashboard";
 import { AdminSetup } from "@/client/pages/AdminSetup";
-import { GalleryManagementPage } from "@/client/pages/GalleryManagementPage";
+import { GalleryManagement } from "@/client/pages/GalleryManagement";
 import { OperatorDashboard } from "@/client/pages/OperatorDashboard";
 import { OperatorTenants } from "@/client/pages/OperatorTenants";
 import { OperatorUsers } from "@/client/pages/OperatorUsers";
@@ -66,7 +66,7 @@ export default function App() {
         <Route path="login" element={<TenantLogin />} />
         <Route path="setup" element={<AdminSetup />} />
         {/* Gallery editor — slug-based, mirrors viewer URL */}
-        <Route path=":gallerySlug/edit" element={<GalleryManagementPage />} />
+        <Route path=":gallerySlug/edit" element={<GalleryManagement />} />
         {/* Viewer routes */}
         <Route path=":gallerySlug/login" element={<GalleryLogin />} />
         <Route path=":gallerySlug/*" element={<GalleryView />} />

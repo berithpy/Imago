@@ -5,7 +5,7 @@ type Props = {
   onChange: () => void;
 };
 
-export function GalleryManagementVisibilityToggle({ isPublic, loading, disabled, onChange }: Props) {
+export function VisibilityToggle({ isPublic, loading, disabled, onChange }: Props) {
   const visibilityDescription = isPublic
     ? "Anyone with the link can view this gallery."
     : "Only you and invited people can view this gallery.";

@@ -7,7 +7,7 @@ type Props = {
   galleryId: string;
 };
 
-export function GalleryManagementEmailWhitelistSection({ galleryId }: Props) {
+export function EmailWhitelistSection({ galleryId }: Props) {
   const { apiBase } = useTenant();
   const [allowedEmails, setAllowedEmails] = useState<AllowedEmail[]>([]);
   const [addingEmail, setAddingEmail] = useState(false);
