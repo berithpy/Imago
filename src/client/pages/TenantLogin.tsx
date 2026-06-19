@@ -4,6 +4,7 @@ import { createAuthClient } from "better-auth/client";
 import { LoginCard } from "@/client/components/LoginCard";
 import { SpinnerOverlay } from "@/client/components/Spinner";
 import { useTenant } from "@/client/lib/tenantContext";
+import { getPostLoginRedirect } from "@/client/lib/authRedirect";
 
 const authClient = createAuthClient({
   baseURL: `${window.location.origin}/api/auth`,
@@ -13,6 +14,7 @@ export function TenantLogin() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { routeBase } = useTenant();
+  const redirectTarget = getPostLoginRedirect(searchParams);
   const [checkingSession, setCheckingSession] = useState(true);
 
   const errorCode = searchParams.get("error");
@@ -29,11 +31,13 @@ export function TenantLogin() {
     authClient
       .getSession({ fetchOptions: { credentials: "include" } })
       .then((res: any) => {
-        if (res?.data?.session) navigate(`${routeBase}/manage`, { replace: true });
+        if (res?.data?.session) {
+          navigate(redirectTarget ?? `${routeBase}/manage`, { replace: true });
+        }
       })
       .catch(() => { })
       .finally(() => setCheckingSession(false));
-  }, [navigate, routeBase, errorCode]);
+  }, [navigate, routeBase, errorCode, redirectTarget]);
 
   async function handleMagicLink(email: string) {
     const res = await fetch("/api/viewer/admin/magic-link", {

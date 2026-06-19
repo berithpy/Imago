@@ -1,5 +1,17 @@
-import { describe, it, expect, beforeAll, beforeEach, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from "vitest";
 import { createWorkerTestHarness, type WorkerTestHarness } from "./testHarness";
+
+const { mockGetSession } = vi.hoisted(() => ({
+  mockGetSession: vi.fn<() => Promise<{ user: { email: string; id?: string } } | null>>(
+    async () => null
+  ),
+}));
+
+vi.mock("../../lib/auth", () => ({
+  auth: vi.fn(() => ({
+    api: { getSession: mockGetSession },
+  })),
+}));
 
 let harness: WorkerTestHarness;
 
@@ -98,6 +110,8 @@ describe("og preview HTML rewriter", () => {
 
   beforeEach(async () => {
     await harness.resetDb();
+    mockGetSession.mockReset();
+    mockGetSession.mockResolvedValue(null);
   });
 
   afterAll(async () => {
@@ -265,6 +279,77 @@ describe("og preview HTML rewriter", () => {
     restore();
 
     expect(await res.text()).toBe("static");
+  });
+
+  it("redirects authenticated non-superAdmin on operator route with not-authorized", async () => {
+    const user = await harness.seedUser({ email: "regular@example.com" });
+    mockGetSession.mockResolvedValue({ user: { email: user.email, id: user.id } });
+
+    const restore = stubAssets();
+    const res = await harness.request("/operator/users", {
+      headers: { "sec-fetch-dest": "document" },
+      redirect: "manual",
+    });
+    restore();
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/login?error=not-authorized");
+  });
+
+  it("lets authenticated superAdmin through on operator routes", async () => {
+    const user = await harness.seedUser({ email: "op@example.com", isSuperAdmin: true });
+    mockGetSession.mockResolvedValue({ user: { email: user.email, id: user.id } });
+
+    const restore = stubAssets();
+    const res = await harness.request("/operator/users", {
+      headers: { "sec-fetch-dest": "document" },
+    });
+    restore();
+
+    expect(res.status).toBe(200);
+  });
+
+  it("redirects authenticated user without tenant membership to tenant login", async () => {
+    const user = await harness.seedUser({ email: "nomember@example.com" });
+    mockGetSession.mockResolvedValue({ user: { email: user.email, id: user.id } });
+
+    const restore = stubAssets();
+    const res = await harness.request("/acme/manage", {
+      headers: { "sec-fetch-dest": "document" },
+      redirect: "manual",
+    });
+    restore();
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/acme/login");
+  });
+
+  it("redirects unauthenticated document requests on operator routes before serving app HTML", async () => {
+    const restore = stubAssets();
+    const res = await harness.request("/operator/users", {
+      headers: {
+        "sec-fetch-dest": "document",
+      },
+      redirect: "manual",
+    });
+    restore();
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/login?returnTo=%2Foperator%2Fusers");
+  });
+
+  it("redirects unauthenticated document requests on tenant admin routes before serving app HTML", async () => {
+    const restore = stubAssets();
+    const res = await harness.request("/acme/wedding/edit", {
+      headers: {
+        "sec-fetch-dest": "document",
+      },
+      redirect: "manual",
+    });
+    restore();
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/acme/login?next=%2Facme%2Fwedding%2Fedit");
   });
 
   it("strips static fallback meta tags so each tag appears exactly once after injection", async () => {

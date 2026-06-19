@@ -1,7 +1,8 @@
 import { useEffect } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { SpinnerOverlay } from "@/client/components/Spinner";
 import { useAuth } from "@/client/lib/authContext";
+import { getPostLoginRedirect } from "@/client/lib/authRedirect";
 
 /**
  * Post-login destination resolver. Reads the cached `/api/me` state and
@@ -16,12 +17,18 @@ import { useAuth } from "@/client/lib/authContext";
 export function LoginResolve() {
   const { auth, loading } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const redirectTarget = getPostLoginRedirect(searchParams);
 
   useEffect(() => {
     if (loading) return;
 
     if (!auth) {
       navigate("/login", { replace: true });
+      return;
+    }
+    if (redirectTarget) {
+      navigate(redirectTarget, { replace: true });
       return;
     }
     if (auth.superAdmin) {
@@ -36,7 +43,7 @@ export function LoginResolve() {
       navigate("/login?error=not-authorized", { replace: true });
     }
     // multi-tenant: fall through to chooser render
-  }, [auth, loading, navigate]);
+  }, [auth, loading, navigate, redirectTarget]);
 
   if (loading || !auth || auth.superAdmin || auth.memberships.length < 2) {
     return <SpinnerOverlay label="Signing you in..." />;

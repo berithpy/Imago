@@ -65,7 +65,7 @@
    */
   // vars are set via .dev.vars (local) and .prod.vars + npm run secrets:push (production)
   "vars": {
-    "EMAIL_DOMAIN": "berith.moe",
+    "EMAIL_DOMAIN": "imago.berith.moe",
   },
   /**
    * Service Bindings (communicate between multiple Workers)

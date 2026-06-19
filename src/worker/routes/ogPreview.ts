@@ -1,14 +1,51 @@
 import { Hono } from "hono";
 import { Bindings } from "../index";
 import { getDb } from "../lib/db";
+import { resolveActorContext } from "../lib/roles";
 import { getGalleryPreview } from "../services/galleryService";
+import { RESERVED_TENANT_SLUGS, RESERVED_GALLERY_SUBPATHS } from "../../shared/reservedSlugs";
 
 export const ogPreviewRoutes = new Hono<{ Bindings: Bindings }>();
 
-// Reserved top-level paths under /:tenantSlug/:gallerySlug that are NOT a
-// gallery view (and so must skip preview lookup). Right now only `login`,
-// but kept as a set for easy extension.
-const RESERVED_GALLERY_SUBPATHS = new Set(["login"]);
+// Reserved tenant slugs that require auth gating (extracted from shared config)
+const PROTECTED_TENANT_SLUGS = new Set<string>(
+  RESERVED_TENANT_SLUGS.filter((slug: string) => slug === "operator")
+);
+
+// Convert reserved gallery subpaths to a Set for fast lookup during preview injection
+const RESERVED_GALLERY_SUBPATHS_SET = new Set(RESERVED_GALLERY_SUBPATHS);
+
+function isDocumentRequest(req: Request): boolean {
+  const secFetchDest = req.headers.get("sec-fetch-dest")?.toLowerCase();
+  if (secFetchDest === "document") return true;
+
+  const accept = req.headers.get("accept")?.toLowerCase() ?? "";
+  return accept.includes("text/html");
+}
+
+function buildReturnTo(pathname: string, search: string): string {
+  if (!pathname.startsWith("/") || pathname.startsWith("//")) return "/";
+  if (pathname.startsWith("/api/")) return "/";
+  return `${pathname}${search}`;
+}
+
+function tenantAdminLoginPath(pathname: string): string {
+  const [tenantSlug] = pathname.split("/").filter(Boolean);
+  return `/${tenantSlug}/login`;
+}
+
+function isProtectedTopLevelPath(segments: string[]): boolean {
+  if (segments.length === 0) return false;
+  return PROTECTED_TENANT_SLUGS.has(segments[0]);
+}
+
+function isTenantManageRoute(segments: string[]): boolean {
+  return segments.length >= 2 && segments[1] === "manage";
+}
+
+function isTenantEditRoute(segments: string[]): boolean {
+  return segments.length >= 3 && segments[2] === "edit";
+}
 
 function escapeHtml(value: string): string {
   return value
@@ -48,6 +85,45 @@ type GalleryPreview = {
 // ------------------------------------------------------------------
 ogPreviewRoutes.all("*", async (c) => {
   const url = new URL(c.req.url);
+
+  if (isDocumentRequest(c.req.raw)) {
+    const segmentsForGate = url.pathname.split("/").filter(Boolean);
+    const protectedRoute =
+      isProtectedTopLevelPath(segmentsForGate) ||
+      isTenantManageRoute(segmentsForGate) ||
+      isTenantEditRoute(segmentsForGate);
+
+    if (protectedRoute) {
+      const actor = await resolveActorContext(c as any);
+      if (!actor.user) {
+        // Unauthenticated: redirect to login with a return target.
+        const returnTo = buildReturnTo(url.pathname, url.search);
+        if (isProtectedTopLevelPath(segmentsForGate)) {
+          return c.redirect(`/login?returnTo=${encodeURIComponent(returnTo)}`, 302);
+        }
+        return c.redirect(
+          `${tenantAdminLoginPath(url.pathname)}?next=${encodeURIComponent(returnTo)}`,
+          302
+        );
+      }
+
+      // Authenticated but may lack the required privilege.
+      if (isProtectedTopLevelPath(segmentsForGate)) {
+        // /operator/* requires platform operator status.
+        if (!actor.superAdmin) {
+          return c.redirect("/login?error=not-authorized", 302);
+        }
+      } else {
+        // Tenant manage/edit: superAdmin or a member of the specific tenant.
+        const tenantSlug = segmentsForGate[0];
+        const isMember = actor.memberships.some((m) => m.tenantSlug === tenantSlug);
+        if (!actor.superAdmin && !isMember) {
+          return c.redirect(tenantAdminLoginPath(url.pathname), 302);
+        }
+      }
+    }
+  }
+
   const assetResponse = await c.env.ASSETS.fetch(c.req.raw);
 
   // Only rewrite HTML responses (the SPA fallback). Static assets pass through.
@@ -60,7 +136,7 @@ ogPreviewRoutes.all("*", async (c) => {
   if (segments.length < 2) return assetResponse;
 
   const [tenantSlug, gallerySlug, maybeSubpath] = segments;
-  if (maybeSubpath && RESERVED_GALLERY_SUBPATHS.has(maybeSubpath)) {
+  if (maybeSubpath && RESERVED_GALLERY_SUBPATHS_SET.has(maybeSubpath)) {
     return assetResponse;
   }
 

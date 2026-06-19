@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { createAuthClient } from "better-auth/client";
 import { LoginCard } from "@/client/components/LoginCard";
 import { SpinnerOverlay } from "@/client/components/Spinner";
+import { getPostLoginRedirect } from "@/client/lib/authRedirect";
 
 const authClient = createAuthClient({
   baseURL: `${window.location.origin}/api/auth`,
@@ -11,6 +12,7 @@ const authClient = createAuthClient({
 export function UniversalLogin() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const redirectTarget = getPostLoginRedirect(searchParams);
   const [checkingSession, setCheckingSession] = useState(true);
 
   const errorCode = searchParams.get("error");
@@ -27,11 +29,17 @@ export function UniversalLogin() {
     authClient
       .getSession({ fetchOptions: { credentials: "include" } })
       .then((res: any) => {
-        if (res?.data?.session) navigate("/login/resolve", { replace: true });
+        if (res?.data?.session) {
+          if (redirectTarget) {
+            navigate(`/login/resolve?returnTo=${encodeURIComponent(redirectTarget)}`, { replace: true });
+            return;
+          }
+          navigate("/login/resolve", { replace: true });
+        }
       })
       .catch(() => { })
       .finally(() => setCheckingSession(false));
-  }, [navigate, errorCode]);
+  }, [navigate, errorCode, redirectTarget]);
 
   async function handleMagicLink(email: string) {
     const res = await fetch("/api/login/magic-link", {
