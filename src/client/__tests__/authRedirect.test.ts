@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { getPostLoginRedirect, sanitizeAppRedirectTarget } from "../lib/authRedirect";
+import {
+  buildAppReturnTo,
+  getPostLoginRedirect,
+  sanitizeAppRedirectTarget,
+  withReturnTo,
+} from "../lib/authRedirect";
 
 describe("sanitizeAppRedirectTarget", () => {
   it("accepts same-origin relative paths", () => {
@@ -41,5 +46,29 @@ describe("getPostLoginRedirect", () => {
       next: "//evil.example",
     });
     expect(getPostLoginRedirect(params)).toBeNull();
+  });
+});
+
+describe("buildAppReturnTo", () => {
+  it("keeps same-origin relative deep links", () => {
+    expect(buildAppReturnTo("/acme/wedding/photo/123", "?download=1", "#picked")).toBe(
+      "/acme/wedding/photo/123?download=1#picked"
+    );
+  });
+
+  it("falls back to root when the path is invalid", () => {
+    expect(buildAppReturnTo("//evil.example", "?x=1")).toBe("/");
+  });
+});
+
+describe("withReturnTo", () => {
+  it("appends a validated returnTo parameter", () => {
+    expect(withReturnTo("/login", "/operator/users")).toBe(
+      "/login?returnTo=%2Foperator%2Fusers"
+    );
+  });
+
+  it("drops invalid return targets", () => {
+    expect(withReturnTo("/acme/login", "https://evil.example")).toBe("/acme/login");
   });
 });

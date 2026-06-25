@@ -4,7 +4,7 @@ import { UploadControl } from "@/client/components/gallery-management/UploadCont
 import { exportGallery } from "@/client/lib/exportGallery";
 import { formatDate, type Gallery } from "@/client/lib/galleryManagement";
 import { useTenant } from "@/client/lib/tenantContext";
-import { copyToClipboard, shareUrl } from "@/client/lib/share";
+import { buildAbsoluteGalleryUrl, copyToClipboard, shareUrl } from "@/client/lib/share";
 
 type Props = {
   galleryId: string;
@@ -14,10 +14,6 @@ type Props = {
   onToggleSettings: () => void;
   onUploadComplete?: () => void;
 };
-
-function buildAbsoluteUrl(routeBase: string, slug: string): string {
-  return `${window.location.origin}${routeBase}/${slug}`;
-}
 
 export function Header({
   galleryId,
@@ -57,7 +53,7 @@ export function Header({
 
   async function handleCopyUrl() {
     if (!gallery) return;
-    const url = buildAbsoluteUrl(routeBase, gallery.slug);
+    const url = buildAbsoluteGalleryUrl(routeBase, gallery.slug);
     const ok = await copyToClipboard(url);
     setCopyState(ok ? "copied" : "failed");
     setTimeout(() => setCopyState("idle"), 2000);
@@ -65,7 +61,7 @@ export function Header({
 
   async function handleShare() {
     if (!gallery) return;
-    const url = buildAbsoluteUrl(routeBase, gallery.slug);
+    const url = buildAbsoluteGalleryUrl(routeBase, gallery.slug);
     const result = await shareUrl(gallery.name, url);
     setShareState(result);
     setTimeout(() => setShareState("idle"), 2000);

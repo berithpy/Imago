@@ -1,43 +1,27 @@
-import { useState, useEffect } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { createAuthClient } from "better-auth/client";
+import { useSearchParams } from "react-router-dom";
 import { LoginCard } from "@/client/components/LoginCard";
-import { SpinnerOverlay } from "@/client/components/Spinner";
 import { useTenant } from "@/client/lib/tenantContext";
+import { useAuth } from "@/client/lib/authContext";
+import { AuthCheckBoundary, resolveSessionRedirect } from "@/client/lib/authGate";
 import { getPostLoginRedirect } from "@/client/lib/authRedirect";
 
-const authClient = createAuthClient({
-  baseURL: `${window.location.origin}/api/auth`,
-});
-
 export function TenantLogin() {
-  const navigate = useNavigate();
+  const { auth, loading } = useAuth();
   const [searchParams] = useSearchParams();
   const { routeBase } = useTenant();
   const redirectTarget = getPostLoginRedirect(searchParams);
-  const [checkingSession, setCheckingSession] = useState(true);
 
   const errorCode = searchParams.get("error");
   const errorMessage =
     errorCode === "not-authorized"
       ? "Your account is not authorized to access the admin panel."
       : null;
-
-  useEffect(() => {
-    if (errorCode) {
-      setCheckingSession(false);
-      return;
-    }
-    authClient
-      .getSession({ fetchOptions: { credentials: "include" } })
-      .then((res: any) => {
-        if (res?.data?.session) {
-          navigate(redirectTarget ?? `${routeBase}/manage`, { replace: true });
-        }
-      })
-      .catch(() => { })
-      .finally(() => setCheckingSession(false));
-  }, [navigate, routeBase, errorCode, redirectTarget]);
+  const decision = resolveSessionRedirect({
+    auth,
+    loading,
+    errorCode,
+    redirectTo: redirectTarget ?? `${routeBase}/manage`,
+  });
 
   async function handleMagicLink(email: string) {
     const res = await fetch("/api/viewer/admin/magic-link", {
@@ -52,29 +36,23 @@ export function TenantLogin() {
     }
   }
 
-  if (checkingSession) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <SpinnerOverlay />
-      </div>
-    );
-  }
-
   return (
-    <div>
-      {errorMessage && (
-        <div
-          role="alert"
-          className="max-w-[420px] mx-auto mt-6 px-4 py-3 bg-red-400/10 border border-red-400/40 rounded-lg text-red-400 text-sm text-center"
-        >
-          {errorMessage}
-        </div>
-      )}
-      <LoginCard
-        title="Admin"
-        subtitle="Sign in to manage galleries and photos."
-        onMagicLink={handleMagicLink}
-      />
-    </div>
+    <AuthCheckBoundary decision={decision}>
+      <div>
+        {errorMessage && (
+          <div
+            role="alert"
+            className="max-w-[420px] mx-auto mt-6 px-4 py-3 bg-red-400/10 border border-red-400/40 rounded-lg text-red-400 text-sm text-center"
+          >
+            {errorMessage}
+          </div>
+        )}
+        <LoginCard
+          title="Admin"
+          subtitle="Sign in to manage galleries and photos."
+          onMagicLink={handleMagicLink}
+        />
+      </div>
+    </AuthCheckBoundary>
   );
 }

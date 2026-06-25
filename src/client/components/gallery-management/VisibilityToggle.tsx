@@ -1,11 +1,14 @@
+import { getAsyncPanelClassName } from "@/client/lib/asyncPanel";
+
 type Props = {
   isPublic: boolean;
   loading?: boolean;
   disabled?: boolean;
   onChange: () => void;
+  note?: string;
 };
 
-export function VisibilityToggle({ isPublic, loading, disabled, onChange }: Props) {
+export function VisibilityToggle({ isPublic, loading, disabled, onChange, note }: Props) {
   const visibilityDescription = isPublic
     ? "Anyone with the link can view this gallery."
     : "Only you and invited people can view this gallery.";
@@ -15,8 +18,7 @@ export function VisibilityToggle({ isPublic, loading, disabled, onChange }: Prop
       <label className="text-xs text-neutral-500">Gallery visibility</label>
       <div
         aria-busy={loading ? "true" : undefined}
-        className={`px-3 py-2.5 bg-neutral-950 border rounded-lg transition-colors ${loading ? "gm-animated-border border-amber-400" : "border-neutral-800"
-          }`}
+        className={getAsyncPanelClassName(!!loading)}
       >
         <div className="flex items-center justify-between gap-3">
           <span className="text-sm text-neutral-100">Public gallery</span>
@@ -37,6 +39,7 @@ export function VisibilityToggle({ isPublic, loading, disabled, onChange }: Prop
           </button>
         </div>
         <p className="mt-2 text-[0.78rem] text-neutral-500">{visibilityDescription}</p>
+        {note ? <p className="mt-2 text-[0.78rem] text-amber-300">{note}</p> : null}
       </div>
     </section>
   );

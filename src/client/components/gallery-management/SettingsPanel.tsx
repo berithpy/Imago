@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { ConfirmationModal } from "@/client/components/ConfirmationModal";
+import { ErrorMessage } from "@/client/components/ErrorMessage";
 import { useTenant } from "@/client/lib/tenantContext";
 import type { Gallery } from "@/client/lib/galleryManagement";
 import { toDateInputValue } from "@/client/lib/galleryManagement";
@@ -35,57 +37,107 @@ export function SettingsPanel({
   const [savingSettings, setSavingSettings] = useState(false);
   const [togglingVisibility, setTogglingVisibility] = useState(false);
   const [deletingGallery, setDeletingGallery] = useState(false);
+  const [pendingPrivateCompletion, setPendingPrivateCompletion] = useState(false);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [confirmation, setConfirmation] = useState<null | {
+    title: string;
+    description: string;
+    confirmLabel: string;
+    action: () => Promise<void>;
+  }>(null);
 
   useEffect(() => {
     setSettingsName(gallery.name);
     setSettingsEventDate(gallery.event_date ? toDateInputValue(gallery.event_date) : "");
     setSettingsExpiresAt(gallery.expires_at ? toDateInputValue(gallery.expires_at) : "");
     setSharePreviewEnabled(!!gallery.share_preview_enabled);
+    if (!gallery.is_public) {
+      setPendingPrivateCompletion(false);
+    }
   }, [gallery]);
 
-  async function handleToggleVisibility() {
-    const next = !gallery.is_public;
+  async function updateVisibility(next: boolean) {
+    setSettingsError(null);
     setTogglingVisibility(true);
     try {
-      await fetch(`${apiBase}/admin/galleries/${galleryId}/visibility`, {
+      const res = await fetch(`${apiBase}/admin/galleries/${galleryId}/visibility`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({ is_public: next }),
       });
+      if (!res.ok) throw new Error();
       onGalleryUpdated((current) => ({ ...current, is_public: next ? 1 : 0 }));
+      if (!next) setPendingPrivateCompletion(false);
+    } catch {
+      setSettingsError(next ? "Failed to make the gallery public." : "Failed to make the gallery private.");
     } finally {
       setTogglingVisibility(false);
     }
   }
 
+  function handleToggleVisibility() {
+    if (gallery.is_public) {
+      setPendingPrivateCompletion(true);
+      setSettingsError(null);
+      return;
+    }
+
+    setConfirmation({
+      title: "Make this gallery public?",
+      description: "Anyone with the link will be able to view it immediately.",
+      confirmLabel: "Make public",
+      action: async () => updateVisibility(true),
+    });
+  }
+
   async function handleSoftDelete() {
-    if (!confirm(`Hide "${gallery.name}" from viewers? You can restore it later.`)) return;
+    setSettingsError(null);
     setDeletingGallery(true);
     try {
-      await fetch(`${apiBase}/admin/galleries/${galleryId}`, { method: "DELETE", credentials: "include" });
+      const res = await fetch(`${apiBase}/admin/galleries/${galleryId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error();
       onGalleryUpdated((current) => ({ ...current, deleted_at: Math.floor(Date.now() / 1000) }));
+    } catch {
+      setSettingsError("Failed to hide the gallery.");
     } finally {
       setDeletingGallery(false);
     }
   }
 
   async function handleRestore() {
+    setSettingsError(null);
     setDeletingGallery(true);
     try {
-      await fetch(`${apiBase}/admin/galleries/${galleryId}/restore`, { method: "POST", credentials: "include" });
+      const res = await fetch(`${apiBase}/admin/galleries/${galleryId}/restore`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error();
       onGalleryUpdated((current) => ({ ...current, deleted_at: null }));
+    } catch {
+      setSettingsError("Failed to restore the gallery.");
     } finally {
       setDeletingGallery(false);
     }
   }
 
   async function handlePermanentDelete() {
-    if (!confirm(`Permanently delete "${gallery.name}" and ALL its photos? This cannot be undone.`)) return;
+    setSettingsError(null);
     setDeletingGallery(true);
     try {
-      await fetch(`${apiBase}/admin/galleries/${galleryId}/permanent`, { method: "DELETE", credentials: "include" });
+      const res = await fetch(`${apiBase}/admin/galleries/${galleryId}/permanent`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error();
       onPermanentDeleteSuccess();
+    } catch {
+      setSettingsError("Failed to permanently delete the gallery.");
     } finally {
       setDeletingGallery(false);
     }
@@ -93,9 +145,10 @@ export function SettingsPanel({
 
   async function handleSaveSettings(e: React.FormEvent) {
     e.preventDefault();
+    setSettingsError(null);
     setSavingSettings(true);
     try {
-      await fetch(`${apiBase}/admin/galleries/${galleryId}/settings`, {
+      const res = await fetch(`${apiBase}/admin/galleries/${galleryId}/settings`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -110,6 +163,7 @@ export function SettingsPanel({
           share_preview_enabled: sharePreviewEnabled,
         }),
       });
+      if (!res.ok) throw new Error();
       onGalleryUpdated((current) => ({
         ...current,
         name: settingsName || current.name,
@@ -122,8 +176,21 @@ export function SettingsPanel({
         share_preview_enabled: sharePreviewEnabled ? 1 : 0,
       }));
       onClose();
+    } catch {
+      setSettingsError("Failed to save gallery settings.");
     } finally {
       setSavingSettings(false);
+    }
+  }
+
+  async function handleConfirmation() {
+    if (!confirmation) return;
+    setConfirming(true);
+    try {
+      await confirmation.action();
+      setConfirmation(null);
+    } finally {
+      setConfirming(false);
     }
   }
 
@@ -133,6 +200,7 @@ export function SettingsPanel({
       className="mb-8 px-6 py-5 bg-neutral-900 border border-neutral-800 rounded-lg flex flex-col gap-3.5"
     >
       <h3 className="font-semibold text-base mb-1">Gallery Settings</h3>
+      {settingsError ? <ErrorMessage message={settingsError} /> : null}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="flex flex-col gap-1.5">
@@ -205,8 +273,18 @@ export function SettingsPanel({
         loading={togglingVisibility}
         disabled={togglingVisibility}
         onChange={handleToggleVisibility}
+        note={
+          pendingPrivateCompletion
+            ? "Finish the password step below to make this gallery private."
+            : undefined
+        }
       />
-      <PasswordResetSection galleryId={galleryId} />
+      <PasswordResetSection
+        galleryId={galleryId}
+        pendingPrivateCompletion={pendingPrivateCompletion}
+        onPrivateCompletion={() => updateVisibility(false)}
+        onCancelPrivateCompletion={() => setPendingPrivateCompletion(false)}
+      />
 
       <hr className="border-neutral-800" />
       <div>
@@ -227,7 +305,14 @@ export function SettingsPanel({
               </button>
               <button
                 type="button"
-                onClick={handlePermanentDelete}
+                onClick={() =>
+                  setConfirmation({
+                    title: `Delete "${gallery.name}" forever?`,
+                    description: "This permanently removes the gallery and all of its photos.",
+                    confirmLabel: "Delete forever",
+                    action: handlePermanentDelete,
+                  })
+                }
                 disabled={deletingGallery}
                 className={dangerBtnClass}
               >
@@ -248,7 +333,14 @@ export function SettingsPanel({
             </span>
             <button
               type="button"
-              onClick={handleSoftDelete}
+              onClick={() =>
+                setConfirmation({
+                  title: `Hide "${gallery.name}" from viewers?`,
+                  description: "You can restore it later from the hidden galleries list.",
+                  confirmLabel: "Hide gallery",
+                  action: handleSoftDelete,
+                })
+              }
               disabled={deletingGallery}
               className={dangerBtnClass}
             >
@@ -257,6 +349,17 @@ export function SettingsPanel({
           </div>
         )}
       </div>
+      <ConfirmationModal
+        open={!!confirmation}
+        title={confirmation?.title ?? ""}
+        description={confirmation?.description ?? ""}
+        confirmLabel={confirmation?.confirmLabel ?? "Confirm"}
+        loading={confirming}
+        onCancel={() => {
+          if (!confirming) setConfirmation(null);
+        }}
+        onConfirm={handleConfirmation}
+      />
     </form>
   );
 }

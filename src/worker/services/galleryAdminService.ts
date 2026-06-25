@@ -22,6 +22,7 @@ import {
 } from "../lib/schema";
 import { RESERVED_GALLERY_SUBPATHS } from "../../shared/reservedSlugs";
 import { ServiceError, type ServiceCtx } from "./types";
+import { resolveBannerR2Key } from "./galleryService";
 
 const SLUG_RE = /^[a-z0-9-]+$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -105,12 +106,12 @@ export async function listGalleriesAdmin(
     .where(and(...conds))
     .orderBy(orderBy)
     .all();
-  // Coerce booleans back to 0/1 for parity with the legacy raw-SQL response.
-  return rows.map((r) => ({
-    ...r,
-    is_public: r.is_public ? 1 : 0,
-    share_preview_enabled: r.share_preview_enabled ? 1 : 0,
-  }));
+  return Promise.all(rows.map(async (row) => ({
+    ...row,
+    banner_r2_key: await resolveBannerR2Key(ctx, row.id, row.banner_photo_id),
+    is_public: row.is_public ? 1 : 0,
+    share_preview_enabled: row.share_preview_enabled ? 1 : 0,
+  })));
 }
 
 // ------------------------------------------------------------------
@@ -388,7 +389,6 @@ const ADMIN_GALLERY_DETAIL_FIELDS = {
   is_public: galleries.isPublic,
   share_preview_enabled: galleries.sharePreviewEnabled,
   banner_photo_id: galleries.bannerPhotoId,
-  banner_r2_key: photos.r2Key,
   event_date: galleries.eventDate,
   expires_at: galleries.expiresAt,
 };
@@ -417,10 +417,10 @@ export async function getAdminGalleryBySlug(
   const gallery = await ctx.db
     .select(ADMIN_GALLERY_DETAIL_FIELDS)
     .from(galleries)
-    .leftJoin(photos, eq(photos.id, galleries.bannerPhotoId))
     .where(and(eq(galleries.slug, slug), isNull(galleries.deletedAt), tenantScope(tenantId)))
     .get();
   if (!gallery) throw new ServiceError("NOT_FOUND", "Gallery not found");
+  const banner_r2_key = await resolveBannerR2Key(ctx, gallery.id, gallery.banner_photo_id);
 
   const photoRows = await ctx.db
     .select(ADMIN_PHOTO_LIST_FIELDS)
@@ -429,7 +429,7 @@ export async function getAdminGalleryBySlug(
     .orderBy(asc(photos.sortOrder), asc(photos.uploadedAt))
     .all();
 
-  return { gallery: coerceAdminGallery(gallery), photos: photoRows };
+  return { gallery: coerceAdminGallery({ ...gallery, banner_r2_key }), photos: photoRows };
 }
 
 export async function getAdminGalleryById(
@@ -442,10 +442,10 @@ export async function getAdminGalleryById(
   const gallery = await ctx.db
     .select(ADMIN_GALLERY_DETAIL_FIELDS)
     .from(galleries)
-    .leftJoin(photos, eq(photos.id, galleries.bannerPhotoId))
     .where(and(eq(galleries.id, id), tenantScope(tenantId)))
     .get();
   if (!gallery) throw new ServiceError("NOT_FOUND", "Gallery not found");
+  const banner_r2_key = await resolveBannerR2Key(ctx, gallery.id, gallery.banner_photo_id);
 
   const photoRows = await ctx.db
     .select(ADMIN_PHOTO_LIST_FIELDS)
@@ -454,7 +454,7 @@ export async function getAdminGalleryById(
     .orderBy(asc(photos.sortOrder), asc(photos.uploadedAt))
     .all();
 
-  return { gallery: coerceAdminGallery(gallery), photos: photoRows };
+  return { gallery: coerceAdminGallery({ ...gallery, banner_r2_key }), photos: photoRows };
 }
 
 // ------------------------------------------------------------------

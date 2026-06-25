@@ -170,6 +170,47 @@ describe("admin routes", () => {
     expect(listPayload.galleries.some((g) => g.id === created.gallery.id)).toBe(true);
   });
 
+  it("GET /api/tenant/galleries resolves thumbnail r2 keys from banner or first photo", async () => {
+    const fallbackGallery = await harness.seedGallery({ slug: "admin-thumb-fallback", isPublic: false });
+    const fallbackLaterId = crypto.randomUUID();
+    const fallbackFirstId = crypto.randomUUID();
+    await harness.runSql(
+      "INSERT INTO photos (id, gallery_id, r2_key, original_name, size, uploaded_at, sort_order) VALUES (?, ?, ?, ?, ?, unixepoch(), ?)",
+      [fallbackLaterId, fallbackGallery.id, `${fallbackGallery.id}/later.jpg`, "later.jpg", 101, 2]
+    );
+    await harness.runSql(
+      "INSERT INTO photos (id, gallery_id, r2_key, original_name, size, uploaded_at, sort_order) VALUES (?, ?, ?, ?, ?, unixepoch(), ?)",
+      [fallbackFirstId, fallbackGallery.id, `${fallbackGallery.id}/first.jpg`, "first.jpg", 102, 1]
+    );
+
+    const preferredGallery = await harness.seedGallery({ slug: "admin-thumb-banner", isPublic: false });
+    const preferredFirstId = crypto.randomUUID();
+    const preferredBannerId = crypto.randomUUID();
+    await harness.runSql(
+      "INSERT INTO photos (id, gallery_id, r2_key, original_name, size, uploaded_at, sort_order) VALUES (?, ?, ?, ?, ?, unixepoch(), ?)",
+      [preferredFirstId, preferredGallery.id, `${preferredGallery.id}/first.jpg`, "first.jpg", 103, 1]
+    );
+    await harness.runSql(
+      "INSERT INTO photos (id, gallery_id, r2_key, original_name, size, uploaded_at, sort_order) VALUES (?, ?, ?, ?, ?, unixepoch(), ?)",
+      [preferredBannerId, preferredGallery.id, `${preferredGallery.id}/banner.jpg`, "banner.jpg", 104, 2]
+    );
+    await harness.runSql(
+      "UPDATE galleries SET banner_photo_id = ? WHERE id = ?",
+      [preferredBannerId, preferredGallery.id]
+    );
+
+    const res = await harness.request("/api/tenant/galleries");
+    expect(res.status).toBe(200);
+    const body = await res.json() as {
+      galleries: Array<{ slug: string; banner_r2_key: string | null }>;
+    };
+
+    expect(body.galleries.find((gallery) => gallery.slug === "admin-thumb-fallback")?.banner_r2_key)
+      .toBe(`${fallbackGallery.id}/first.jpg`);
+    expect(body.galleries.find((gallery) => gallery.slug === "admin-thumb-banner")?.banner_r2_key)
+      .toBe(`${preferredGallery.id}/banner.jpg`);
+  });
+
   it("DELETE /api/tenant/galleries/:id soft-deletes and restore clears deleted_at", async () => {
     const createRes = await harness.request("/api/tenant/galleries", {
       method: "POST",

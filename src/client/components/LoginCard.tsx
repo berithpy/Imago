@@ -34,11 +34,13 @@ export function LoginCard({
   const [magicError, setMagicError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [emailSent, setEmailSent] = useState(false);
+  const postSubmitSubtitle = "Check your inbox for the sign-in link. If it doesn't arrive, check spam or contact support.";
 
   const showPasswordForm = !!(showPasswordFallback && onPassword);
 
   async function handleEmailSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (emailSent) return;
     setMagicError(null);
     setMagicSubmitting(true);
     try {
@@ -72,70 +74,77 @@ export function LoginCard({
           Imago
         </p>
         <h1 className="text-[1.4rem] font-bold mb-2">{title}</h1>
-        {subtitle && !emailSent && <p className="text-neutral-500 text-sm mb-6">{subtitle}</p>}
-
-        {emailSent ? (
-          <div className="text-amber-400 text-sm">
-            Check your inbox for the sign-in link.
-          </div>
-        ) : (
-          <div className="flex flex-col gap-6">
-            <form onSubmit={handleEmailSubmit} className="flex flex-col gap-4">
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                required
-                autoFocus
-                className={inputLargeClass}
-              />
-              {magicError && <FieldError message={magicError} />}
-              <Button type="submit" size="lg" loading={magicSubmitting} analyticsId="login_submit" analyticsParams={{ login_mode: "magic_link" }} className="w-full">
-                {magicSubmitting ? "Sending..." : "Send magic link"}
-              </Button>
-            </form>
-
-            {showPasswordForm && (
-              <>
-                <div className="flex items-center gap-3 text-neutral-600 text-xs uppercase tracking-[0.12em]">
-                  <span className="flex-1 h-px bg-neutral-800" />
-                  or
-                  <span className="flex-1 h-px bg-neutral-800" />
-                </div>
-
-                <form onSubmit={handlePasswordSubmit} className="flex flex-col gap-4">
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Password"
-                    required
-                    className={inputLargeClass}
-                  />
-                  {passwordError && <FieldError message={passwordError} />}
-                  <Button type="submit" size="lg" loading={passwordSubmitting} analyticsId="login_submit" analyticsParams={{ login_mode: "password" }} className="w-full">
-                    {passwordSubmitting ? "Signing in..." : "Sign in"}
-                  </Button>
-                </form>
-              </>
-            )}
-
-            {showAdminBypass && onAdminBypass && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="lg"
-                onClick={onAdminBypass}
-                loading={bypassLoading}
-                analyticsId="login_admin_bypass"
-                className="w-full"
-              >
-                {bypassLoading ? "..." : "Admin: enter as viewer"}
-              </Button>
-            )}
-          </div>
+        {(subtitle || emailSent) && (
+          <p className={emailSent ? "text-amber-400 text-sm mb-6" : "text-neutral-500 text-sm mb-6"}>
+            {emailSent ? postSubmitSubtitle : subtitle}
+          </p>
         )}
+
+        <div className="flex flex-col gap-6">
+          <form onSubmit={handleEmailSubmit} className="flex flex-col gap-4">
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              required
+              autoFocus={!emailSent}
+              disabled={emailSent}
+              className={inputLargeClass}
+            />
+            {magicError && <FieldError message={magicError} />}
+            <Button
+              type="submit"
+              size="lg"
+              loading={magicSubmitting}
+              disabled={emailSent}
+              analyticsId="login_submit"
+              analyticsParams={{ login_mode: "magic_link" }}
+              className="w-full"
+            >
+              {magicSubmitting ? "Sending..." : emailSent ? "Magic link sent" : "Send magic link"}
+            </Button>
+          </form>
+
+          {!emailSent && showPasswordForm && (
+            <>
+              <div className="flex items-center gap-3 text-neutral-600 text-xs uppercase tracking-[0.12em]">
+                <span className="flex-1 h-px bg-neutral-800" />
+                or
+                <span className="flex-1 h-px bg-neutral-800" />
+              </div>
+
+              <form onSubmit={handlePasswordSubmit} className="flex flex-col gap-4">
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Password"
+                  required
+                  className={inputLargeClass}
+                />
+                {passwordError && <FieldError message={passwordError} />}
+                <Button type="submit" size="lg" loading={passwordSubmitting} analyticsId="login_submit" analyticsParams={{ login_mode: "password" }} className="w-full">
+                  {passwordSubmitting ? "Signing in..." : "Sign in"}
+                </Button>
+              </form>
+            </>
+          )}
+
+          {!emailSent && showAdminBypass && onAdminBypass && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="lg"
+              onClick={onAdminBypass}
+              loading={bypassLoading}
+              analyticsId="login_admin_bypass"
+              className="w-full"
+            >
+              {bypassLoading ? "..." : "Admin: enter as viewer"}
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -25,6 +25,12 @@ export type AllowedEmail = {
   added_at: number;
 };
 
+export type NewGalleryShareAccessState = {
+  galleryName: string;
+  gallerySlug: string;
+  password: string;
+};
+
 /** Convert unix timestamp to YYYY-MM-DD for <input type="date"> */
 export function toDateInputValue(unix: number): string {
   return new Date(unix * 1000).toISOString().slice(0, 10);

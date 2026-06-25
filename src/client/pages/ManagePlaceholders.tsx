@@ -1,8 +1,6 @@
-import { useEffect } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { AppShell } from "@/client/components/shell/AppShell";
-import { useAuth } from "@/client/lib/authContext";
-import { SpinnerOverlay } from "@/client/components/Spinner";
+import { AuthCheckBoundary, useAuthCheck } from "@/client/lib/authGate";
 
 type PlaceholderProps = {
   title: string;
@@ -21,32 +19,26 @@ type PlaceholderProps = {
  */
 function ManagePlaceholder({ title, blurb }: PlaceholderProps) {
   const { tenantSlug } = useParams<{ tenantSlug: string }>();
-  const { auth, loading } = useAuth();
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    if (loading) return;
-    if (!auth) {
-      navigate(`/${tenantSlug}/login`, { replace: true });
-      return;
-    }
-    if (auth.superAdmin) return;
-    const ok = auth.memberships.some((m) => m.tenantSlug === tenantSlug);
-    if (!ok) navigate(`/${tenantSlug}`, { replace: true });
-  }, [auth, loading, tenantSlug, navigate]);
-
-  if (loading || !auth) return <SpinnerOverlay />;
+  const authCheck = useAuthCheck({
+    role: "tenant-member",
+    tenantSlug: tenantSlug ?? "",
+    loginPath: `/${tenantSlug}/login`,
+    returnTo: `/${tenantSlug}/manage`,
+    unauthorizedTo: `/${tenantSlug}`,
+  });
 
   return (
-    <AppShell>
-      <div className="max-w-[900px] mx-auto px-6 py-10">
-        <h1 className="text-[1.75rem] font-bold mb-2">{title}</h1>
-        <p className="text-neutral-500 text-sm mb-6">{blurb}</p>
-        <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-6 py-10 text-center">
-          <p className="text-neutral-500 text-sm">Coming soon.</p>
+    <AuthCheckBoundary decision={authCheck}>
+      <AppShell>
+        <div className="max-w-[900px] mx-auto px-6 py-10">
+          <h1 className="text-[1.75rem] font-bold mb-2">{title}</h1>
+          <p className="text-neutral-500 text-sm mb-6">{blurb}</p>
+          <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-6 py-10 text-center">
+            <p className="text-neutral-500 text-sm">Coming soon.</p>
+          </div>
         </div>
-      </div>
-    </AppShell>
+      </AppShell>
+    </AuthCheckBoundary>
   );
 }
 

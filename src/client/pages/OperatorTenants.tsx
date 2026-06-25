@@ -2,9 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/client/components/Button";
 import { CreateTenantForm, SlugIndicator, checkTenantSlug } from "@/client/components/CreateTenantForm";
-import { SpinnerOverlay } from "@/client/components/Spinner";
 import { AppShell } from "@/client/components/shell/AppShell";
-import { useAuth } from "@/client/lib/authContext";
+import { AuthCheckBoundary, useAuthCheck } from "@/client/lib/authGate";
 import { useDebouncedValue } from "@/client/lib/useDebouncedValue";
 
 const cardClass = "bg-neutral-900 border border-neutral-800 rounded-lg px-6 py-5";
@@ -28,8 +27,12 @@ type SlugStatus = "idle" | "checking" | "available" | "taken" | "invalid";
 
 export function OperatorTenants() {
   const navigate = useNavigate();
-  const { auth, loading: authLoading } = useAuth();
-  const [sessionChecked, setSessionChecked] = useState(false);
+  const authCheck = useAuthCheck({
+    role: "super-admin",
+    loginPath: "/login",
+    returnTo: "/operator/tenants",
+    unauthorizedTo: "/login?error=not-authorized",
+  });
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [tenantsLoading, setTenantsLoading] = useState(true);
   const [tenantSearch, setTenantSearch] = useState("");
@@ -50,13 +53,7 @@ export function OperatorTenants() {
   const [deleteConfirmInput, setDeleteConfirmInput] = useState("");
 
   useEffect(() => {
-    if (authLoading) return;
-    if (!auth) {
-      navigate("/login", { replace: true });
-      return;
-    }
-    if (!auth.superAdmin) {
-      navigate("/login?error=not-authorized", { replace: true });
+    if (authCheck.outcome !== "allowed") {
       return;
     }
 
@@ -79,10 +76,9 @@ export function OperatorTenants() {
           setPagination(d.pagination);
         }
         setTenantsLoading(false);
-        setSessionChecked(true);
       })
       .catch(() => setTenantsLoading(false));
-  }, [auth, authLoading, navigate, page, pageSize, debouncedTenantSearch]);
+  }, [authCheck.outcome, page, pageSize, debouncedTenantSearch]);
 
   function loadTenants() {
     setTenantsLoading(true);
@@ -164,8 +160,6 @@ export function OperatorTenants() {
     loadTenants();
   }
 
-  if (!sessionChecked) return <SpinnerOverlay />;
-
   const activeTenants = tenants.filter((t) => !t.deleted_at);
   const deletedTenants = tenants.filter((t) => t.deleted_at);
   const filteredTenants = activeTenants;
@@ -177,8 +171,9 @@ export function OperatorTenants() {
   }
 
   return (
-    <AppShell>
-      <div className="max-w-[960px] mx-auto px-6 py-10">
+    <AuthCheckBoundary decision={authCheck}>
+      <AppShell>
+        <div className="max-w-[960px] mx-auto px-6 py-10">
         <div className="mb-10">
           <h1 className="text-[1.75rem] font-bold">Tenants</h1>
           <p className="text-neutral-500 text-sm mt-0.5">Manage tenant accounts and access</p>
@@ -357,7 +352,8 @@ export function OperatorTenants() {
             </details>
           )}
         </section>
-      </div>
-    </AppShell>
+        </div>
+      </AppShell>
+    </AuthCheckBoundary>
   );
 }

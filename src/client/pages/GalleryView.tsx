@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { useParams, useLocation } from "react-router-dom";
 import { Masonry } from "masonic";
 import { Spinner, SpinnerOverlay } from "@/client/components/Spinner";
 import { ErrorMessage } from "@/client/components/ErrorMessage";
@@ -9,6 +9,12 @@ import { Lightbox } from "@/client/components/Lightbox";
 import { exportGallery } from "@/client/lib/exportGallery";
 import { useTenant } from "@/client/lib/tenantContext";
 import { shareUrl } from "@/client/lib/share";
+import {
+  AuthCheckBoundary,
+  AuthCheckPlaceholder,
+  type AuthCheckDecision,
+} from "@/client/lib/authGate";
+import { buildAppReturnTo, withReturnTo } from "@/client/lib/authRedirect";
 import { buildGalleryViewMetadata } from "@/client/lib/pageMetadata";
 import { usePageMetadata } from "@/client/lib/usePageMetadata";
 import { AppShell } from "@/client/components/shell/AppShell";
@@ -82,7 +88,6 @@ function MasonryGrid({
 
 export function GalleryView() {
   const { gallerySlug } = useParams<{ gallerySlug: string }>();
-  const navigate = useNavigate();
   const location = useLocation();
   const { apiBase, routeBase, tenantName } = useTenant();
 
@@ -113,6 +118,7 @@ export function GalleryView() {
   const [exportDone, setExportDone] = useState(false);
   const [showInfo, setShowInfo] = useState(true);
   const [shareState, setShareState] = useState<"idle" | "shared" | "copied" | "failed">("idle");
+  const [authCheck, setAuthCheck] = useState<AuthCheckDecision>({ outcome: "unknown" });
 
   const loadingMoreRef = useRef(false);
   const observerRef = useRef<IntersectionObserver | null>(null);
@@ -165,12 +171,13 @@ export function GalleryView() {
 
     async function init() {
       setLoading(true);
+      setAuthCheck({ outcome: "unknown" });
       try {
         const metaRes = await fetch(`${apiBase}/galleries/${gallerySlug}`);
         if (cancelled) return;
-        if (metaRes.status === 410) { setExpired(true); setLoading(false); return; }
-        if (metaRes.status === 404) { setError("Gallery not found."); setLoading(false); return; }
-        if (!metaRes.ok) { setError("Failed to load gallery."); setLoading(false); return; }
+        if (metaRes.status === 410) { setExpired(true); setAuthCheck({ outcome: "allowed" }); setLoading(false); return; }
+        if (metaRes.status === 404) { setError("Gallery not found."); setAuthCheck({ outcome: "allowed" }); setLoading(false); return; }
+        if (!metaRes.ok) { setError("Failed to load gallery."); setAuthCheck({ outcome: "allowed" }); setLoading(false); return; }
         const d = await metaRes.json() as { gallery?: { name: string; is_public: number; banner_r2_key: string | null; event_date: number | null } };
         if (cancelled) return;
         isPublicGallery = !!d.gallery?.is_public;
@@ -179,7 +186,11 @@ export function GalleryView() {
         setBannerKey(d.gallery?.banner_r2_key ?? null);
         setEventDate(d.gallery?.event_date ?? null);
       } catch {
-        if (!cancelled) { setError("Failed to load gallery."); setLoading(false); }
+        if (!cancelled) {
+          setError("Failed to load gallery.");
+          setAuthCheck({ outcome: "allowed" });
+          setLoading(false);
+        }
         return;
       }
 
@@ -188,7 +199,13 @@ export function GalleryView() {
         if (cancelled) return;
         if (data.needsAuth) {
           if (!isPublicGallery) {
-            navigate(`${routeBase}/${gallerySlug}/login?next=${encodeURIComponent(window.location.pathname)}`, { replace: true });
+            setAuthCheck({
+              outcome: "redirect",
+              to: withReturnTo(
+                `${routeBase}/${gallerySlug}/login`,
+                buildAppReturnTo(location.pathname, location.search, location.hash)
+              ),
+            });
           }
           return;
         }
@@ -203,8 +220,10 @@ export function GalleryView() {
           setUserProperties({ viewer_auth_method: authMethod });
           track("gallery_view", { gallery_slug: gallerySlug, auth_method: authMethod });
         }
+        setAuthCheck({ outcome: "allowed" });
       } catch {
         setError("Failed to load photos");
+        setAuthCheck({ outcome: "allowed" });
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -212,7 +231,7 @@ export function GalleryView() {
 
     init();
     return () => { cancelled = true; };
-  }, [gallerySlug, navigate, fetchPhotos, apiBase, routeBase, retryCount]);
+  }, [gallerySlug, fetchPhotos, apiBase, routeBase, retryCount, location.pathname, location.search, location.hash]);
 
   const loadMore = useCallback(async () => {
     if (!nextCursor || loadingMoreRef.current) return;
@@ -222,7 +241,13 @@ export function GalleryView() {
       const data = await fetchPhotos(nextCursor);
       if (data.needsAuth) {
         if (!isPublic) {
-          navigate(`${routeBase}/${gallerySlug}/login?next=${encodeURIComponent(window.location.pathname)}`, { replace: true });
+          setAuthCheck({
+            outcome: "redirect",
+            to: withReturnTo(
+              `${routeBase}/${gallerySlug}/login`,
+              buildAppReturnTo(location.pathname, location.search, location.hash)
+            ),
+          });
         }
         return;
       }
@@ -233,7 +258,7 @@ export function GalleryView() {
       loadingMoreRef.current = false;
       setLoadingMore(false);
     }
-  }, [nextCursor, gallerySlug, isPublic, navigate, fetchPhotos, routeBase]);
+  }, [nextCursor, gallerySlug, isPublic, fetchPhotos, routeBase, location.pathname, location.search, location.hash]);
 
   useEffect(() => {
     let cancelled = false;
@@ -381,126 +406,137 @@ export function GalleryView() {
   });
   const pageMetadata = usePageMetadata(metadata);
 
+  if (authCheck.outcome === "unknown") {
+    return (
+      <>
+        {pageMetadata}
+        <AuthCheckPlaceholder />
+      </>
+    );
+  }
+
   return (
     <>
       {pageMetadata}
-      <AppShell gallerySlug={gallerySlug}>
-        <div className="min-h-screen p-6">
-        {expired && (
-          <div className="max-w-[480px] mx-auto mt-20 text-center">
-            <ErrorMessage message="This gallery has expired and is no longer available." />
-            <a href="/" className="text-sm text-neutral-500">Back to galleries</a>
-          </div>
-        )}
-
-        {!expired && loading && (
-          <div className="min-h-screen flex items-center justify-center">
-            <SpinnerOverlay />
-          </div>
-        )}
-
-        {!expired && !loading && (
-          <>
-            {bannerKey && (
-              <div className="w-full max-h-[340px] overflow-hidden">
-                <img
-                  src={`/api/images/${bannerKey}?variant=banner`}
-                  alt="Gallery banner"
-                  className="w-full h-[340px] object-cover block"
-                />
+      <AuthCheckBoundary decision={authCheck}>
+        <AppShell gallerySlug={gallerySlug}>
+          <div className="min-h-screen p-6">
+            {expired && (
+              <div className="max-w-[480px] mx-auto mt-20 text-center">
+                <ErrorMessage message="This gallery has expired and is no longer available." />
+                <a href="/" className="text-sm text-neutral-500">Back to galleries</a>
               </div>
             )}
 
-            <div className="max-w-[1200px] mx-auto my-8 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
-              <div className="min-w-0">
-                <h1 className="text-[1.75rem] font-bold leading-tight">
-                  {galleryName || gallerySlug}
-                </h1>
-                {eventDate && (
-                  <div className="text-[0.85rem] text-neutral-500 mt-1">
-                    {new Date(eventDate * 1000).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}
+            {!expired && loading && (
+              <div className="min-h-screen flex items-center justify-center">
+                <SpinnerOverlay />
+              </div>
+            )}
+
+            {!expired && !loading && (
+              <>
+                {bannerKey && (
+                  <div className="w-full max-h-[340px] overflow-hidden">
+                    <img
+                      src={`/api/images/${bannerKey}?variant=banner`}
+                      alt="Gallery banner"
+                      className="w-full h-[340px] object-cover block"
+                    />
                   </div>
                 )}
-              </div>
-              {photos.length > 0 && (
-                <div className="flex gap-2 items-center shrink-0">
-                  <button
-                    onClick={() => setShowInfo((v) => !v)}
-                    title={showInfo ? "Hide photo info overlays" : "Show photo info overlays"}
-                    className={`px-3 py-2 border border-neutral-800 rounded-lg text-[0.85rem] font-mono whitespace-nowrap transition-colors cursor-pointer ${showInfo ? "bg-neutral-900 text-neutral-100" : "bg-transparent text-neutral-500"
-                      }`}
-                  >
-                    {showInfo ? "Info on" : "Info off"}
-                  </button>
-                  <Button
-                    onClick={handleShare}
-                    title="Share gallery URL"
-                    variant="secondary"
-                    analyticsId="gallery_share"
-                    className={`px-3 py-2 border rounded-lg text-[0.85rem] whitespace-nowrap ${shareState === "shared" || shareState === "copied"
-                      ? "bg-amber-400 border-amber-400 text-neutral-950 font-semibold"
-                      : "bg-transparent border-neutral-800 text-neutral-100"
-                      }`}
-                  >
-                    {shareLabel}
-                  </Button>
-                  <Button
-                    onClick={handleExport}
-                    disabled={exporting}
-                    variant="secondary"
-                    analyticsId="gallery_download"
-                    className={`px-4 py-2 border rounded-lg text-[0.85rem] whitespace-nowrap ${exporting ? "text-neutral-500" : "text-neutral-100"
-                      } ${exportDone
-                        ? "bg-amber-400 border-amber-400 text-neutral-950 font-semibold"
-                        : "bg-transparent border-neutral-800"
-                      }`}
-                  >
-                    {exportDone ? "Saved!" : exporting ? exportProgress : "Download all"}
-                  </Button>
+
+                <div className="max-w-[1200px] mx-auto my-8 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+                  <div className="min-w-0">
+                    <h1 className="text-[1.75rem] font-bold leading-tight">
+                      {galleryName || gallerySlug}
+                    </h1>
+                    {eventDate && (
+                      <div className="text-[0.85rem] text-neutral-500 mt-1">
+                        {new Date(eventDate * 1000).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}
+                      </div>
+                    )}
+                  </div>
+                  {photos.length > 0 && (
+                    <div className="flex gap-2 items-center shrink-0">
+                      <button
+                        onClick={() => setShowInfo((v) => !v)}
+                        title={showInfo ? "Hide photo info overlays" : "Show photo info overlays"}
+                        className={`px-3 py-2 border border-neutral-800 rounded-lg text-[0.85rem] font-mono whitespace-nowrap transition-colors cursor-pointer ${showInfo ? "bg-neutral-900 text-neutral-100" : "bg-transparent text-neutral-500"
+                          }`}
+                      >
+                        {showInfo ? "Info on" : "Info off"}
+                      </button>
+                      <Button
+                        onClick={handleShare}
+                        title="Share gallery URL"
+                        variant="secondary"
+                        analyticsId="gallery_share"
+                        className={`px-3 py-2 border rounded-lg text-[0.85rem] whitespace-nowrap ${shareState === "shared" || shareState === "copied"
+                          ? "bg-amber-400 border-amber-400 text-neutral-950 font-semibold"
+                          : "bg-transparent border-neutral-800 text-neutral-100"
+                          }`}
+                      >
+                        {shareLabel}
+                      </Button>
+                      <Button
+                        onClick={handleExport}
+                        disabled={exporting}
+                        variant="secondary"
+                        analyticsId="gallery_download"
+                        className={`px-4 py-2 border rounded-lg text-[0.85rem] whitespace-nowrap ${exporting ? "text-neutral-500" : "text-neutral-100"
+                          } ${exportDone
+                            ? "bg-amber-400 border-amber-400 text-neutral-950 font-semibold"
+                            : "bg-transparent border-neutral-800"
+                          }`}
+                      >
+                        {exportDone ? "Saved!" : exporting ? exportProgress : "Download all"}
+                      </Button>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
 
-            {error && <ErrorMessage message={error} onRetry={() => { setError(null); setRetryCount((c) => c + 1); }} />}
+                {error && <ErrorMessage message={error} onRetry={() => { setError(null); setRetryCount((c) => c + 1); }} />}
 
-            <div className="max-w-[1200px] mx-auto">
-              <MasonryGrid
-                photos={photos}
-                total={total}
-                onPhotoClick={openLightbox}
-                showInfo={showInfo}
-                scrollToIndex={pendingScrollToIndex}
-              />
-              <div ref={setSentinel} className="h-px" />
-              {loadingMore && (
-                <div className="flex justify-center py-4">
-                  <Spinner />
+                <div className="max-w-[1200px] mx-auto">
+                  <MasonryGrid
+                    photos={photos}
+                    total={total}
+                    onPhotoClick={openLightbox}
+                    showInfo={showInfo}
+                    scrollToIndex={pendingScrollToIndex}
+                  />
+                  <div ref={setSentinel} className="h-px" />
+                  {loadingMore && (
+                    <div className="flex justify-center py-4">
+                      <Spinner />
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
 
-            {photos.length === 0 && !error && (
-              <EmptyState message="No photos in this gallery yet." />
-            )}
+                {photos.length === 0 && !error && (
+                  <EmptyState message="No photos in this gallery yet." />
+                )}
 
-            {lightbox && (
-              <Lightbox
-                r2Key={lightbox.r2_key}
-                alt={lightbox.original_name}
-                filename={lightbox.original_name}
-                onClose={closeLightbox}
-                onPrev={openPreviousPhoto}
-                onNext={openNextPhoto}
-                canPrev={canPrev}
-                canNext={canNext}
-                currentPosition={Math.max(activePhotoIndex + 1, 1)}
-                totalCount={Math.max(photos.length, 1)}
-              />
+                {lightbox && (
+                  <Lightbox
+                    r2Key={lightbox.r2_key}
+                    alt={lightbox.original_name}
+                    filename={lightbox.original_name}
+                    onClose={closeLightbox}
+                    onPrev={openPreviousPhoto}
+                    onNext={openNextPhoto}
+                    canPrev={canPrev}
+                    canNext={canNext}
+                    currentPosition={Math.max(activePhotoIndex + 1, 1)}
+                    totalCount={Math.max(photos.length, 1)}
+                  />
+                )}
+              </>
             )}
-          </>
-        )}
-        </div>
-      </AppShell>
+          </div>
+        </AppShell>
+      </AuthCheckBoundary>
     </>
   );
 }

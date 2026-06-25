@@ -143,6 +143,47 @@ describe("gallery routes", () => {
     expect(slugs).toContain("list-b");
   });
 
+  it("GET /api/galleries resolves thumbnail r2 keys from banner or first photo", async () => {
+    const fallbackGallery = await harness.seedGallery({ slug: "list-thumb-fallback", isPublic: true });
+    const fallbackLaterId = crypto.randomUUID();
+    const fallbackFirstId = crypto.randomUUID();
+    await harness.runSql(
+      "INSERT INTO photos (id, gallery_id, r2_key, original_name, size, uploaded_at, sort_order) VALUES (?, ?, ?, ?, ?, unixepoch(), ?)",
+      [fallbackLaterId, fallbackGallery.id, `${fallbackGallery.id}/later.jpg`, "later.jpg", 101, 2]
+    );
+    await harness.runSql(
+      "INSERT INTO photos (id, gallery_id, r2_key, original_name, size, uploaded_at, sort_order) VALUES (?, ?, ?, ?, ?, unixepoch(), ?)",
+      [fallbackFirstId, fallbackGallery.id, `${fallbackGallery.id}/first.jpg`, "first.jpg", 102, 1]
+    );
+
+    const preferredGallery = await harness.seedGallery({ slug: "list-thumb-banner", isPublic: true });
+    const preferredFirstId = crypto.randomUUID();
+    const preferredBannerId = crypto.randomUUID();
+    await harness.runSql(
+      "INSERT INTO photos (id, gallery_id, r2_key, original_name, size, uploaded_at, sort_order) VALUES (?, ?, ?, ?, ?, unixepoch(), ?)",
+      [preferredFirstId, preferredGallery.id, `${preferredGallery.id}/first.jpg`, "first.jpg", 103, 1]
+    );
+    await harness.runSql(
+      "INSERT INTO photos (id, gallery_id, r2_key, original_name, size, uploaded_at, sort_order) VALUES (?, ?, ?, ?, ?, unixepoch(), ?)",
+      [preferredBannerId, preferredGallery.id, `${preferredGallery.id}/banner.jpg`, "banner.jpg", 104, 2]
+    );
+    await harness.runSql(
+      "UPDATE galleries SET banner_photo_id = ? WHERE id = ?",
+      [preferredBannerId, preferredGallery.id]
+    );
+
+    const res = await harness.request("/api/galleries");
+    expect(res.status).toBe(200);
+    const body = await res.json() as {
+      galleries: Array<{ slug: string; banner_r2_key: string | null }>;
+    };
+
+    expect(body.galleries.find((gallery) => gallery.slug === "list-thumb-fallback")?.banner_r2_key)
+      .toBe(`${fallbackGallery.id}/first.jpg`);
+    expect(body.galleries.find((gallery) => gallery.slug === "list-thumb-banner")?.banner_r2_key)
+      .toBe(`${preferredGallery.id}/banner.jpg`);
+  });
+
   it("GET /api/galleries/:slug/export returns photo list for authenticated viewer", async () => {
     const gallery = await harness.seedGallery({ slug: "export-gallery", isPublic: false, password: "export-pass" });
     const photoId = crypto.randomUUID();
