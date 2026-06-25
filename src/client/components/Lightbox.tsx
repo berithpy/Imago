@@ -47,14 +47,40 @@ export function Lightbox({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/95 flex flex-col items-center justify-center p-4"
+      className="fixed inset-0 z-50 bg-black/95 flex flex-col pt-12 pb-16"
       onClick={onClose}
     >
-      <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 px-3 py-1.5 bg-neutral-900/80 border border-neutral-800 rounded-lg text-neutral-100 text-sm">
-        {currentPosition} / {totalCount}
+      {/* Top bar: counter + close button */}
+      <div className="absolute top-0 left-0 right-0 z-20 flex justify-between items-center px-4 py-2.5 h-12">
+        {/* Counter - centered with monospace font */}
+        <div className="flex-1 text-center px-3 py-1.5 bg-neutral-900/80 border border-neutral-800 rounded-lg text-neutral-100 text-sm font-mono">
+          {currentPosition} / {totalCount}
+        </div>
+        {/* Close button */}
+        <Button
+          onClick={onClose}
+          aria-label="Close lightbox"
+          variant="secondary"
+          size="sm"
+          analyticsId="lightbox_close"
+          className="ml-2 px-3 py-1.5 bg-neutral-900/80 border border-neutral-800 rounded-lg text-neutral-100 text-sm cursor-pointer"
+        >
+          Close
+        </Button>
       </div>
 
-      <div className="absolute top-3 right-3 flex gap-2 z-10">
+      {/* Image viewport - centered and inset */}
+      <div className="flex-1 flex items-center justify-center px-4 overflow-hidden">
+        <img
+          src={`/api/images/${r2Key}?variant=full`}
+          alt={alt}
+          onClick={(e) => e.stopPropagation()}
+          className="max-w-full max-h-full object-contain"
+        />
+      </div>
+
+      {/* Bottom bar: share and download buttons */}
+      <div className="absolute bottom-0 left-0 right-0 z-20 flex justify-center gap-2 px-4 py-2.5 h-16">
         <Button
           onClick={(e) => { e.stopPropagation(); void handleShare(); }}
           variant="secondary"
@@ -75,18 +101,9 @@ export function Lightbox({
         >
           Download
         </LinkButton>
-        <Button
-          onClick={onClose}
-          aria-label="Close"
-          variant="secondary"
-          size="sm"
-          analyticsId="lightbox_close"
-          className="px-3 py-1.5 bg-neutral-900/80 border border-neutral-800 rounded-lg text-neutral-100 text-sm cursor-pointer"
-        >
-          Close
-        </Button>
       </div>
 
+      {/* Navigation arrows: unchanged, left/right positioning */}
       <button
         onClick={(e) => {
           e.stopPropagation();
@@ -94,7 +111,7 @@ export function Lightbox({
         }}
         aria-label="Previous photo"
         disabled={!canPrev}
-        className="absolute left-5 top-1/2 -translate-y-1/2 h-14 w-14 rounded-full border border-neutral-700 bg-neutral-900/80 text-neutral-100 flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+        className="absolute left-5 top-1/2 -translate-y-1/2 h-14 w-14 rounded-full border border-neutral-700 bg-neutral-900/80 text-neutral-100 flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer z-10"
       >
         <svg
           aria-hidden="true"
@@ -117,7 +134,7 @@ export function Lightbox({
         }}
         aria-label="Next photo"
         disabled={!canNext}
-        className="absolute right-5 top-1/2 -translate-y-1/2 h-14 w-14 rounded-full border border-neutral-700 bg-neutral-900/80 text-neutral-100 flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+        className="absolute right-5 top-1/2 -translate-y-1/2 h-14 w-14 rounded-full border border-neutral-700 bg-neutral-900/80 text-neutral-100 flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer z-10"
       >
         <svg
           aria-hidden="true"
@@ -132,13 +149,6 @@ export function Lightbox({
           <path d="M9 5l7 7-7 7" />
         </svg>
       </button>
-
-      <img
-        src={`/api/images/${r2Key}?variant=full`}
-        alt={alt}
-        onClick={(e) => e.stopPropagation()}
-        className="max-w-full max-h-full object-contain"
-      />
     </div>
   );
 }

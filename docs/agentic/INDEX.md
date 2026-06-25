@@ -22,10 +22,13 @@ Human engineer comment: Not sure if we actually need this file, we could just us
 - [AW-015 Tenant gallery filter, tags, and pagination](in-progress/AW-015-tenant-gallery-filter-tags-pagination.md)
 - [AW-016 Tenant dashboard stats and shell rework](in-progress/AW-016-tenant-dashboard-stats-shell-rework.md)
 - [AW-017 Dev auth precheck for Wrangler](in-progress/AW-017-dev-auth-precheck-for-wrangler.md)
+- [AW-018 Dashboard route guard without tenant or operator context](in-progress/AW-018-dashboard-route-guard-without-tenant-or-operator.md)
 - [UI-001 Login card post-submit state](in-progress/UI-001-login-card-post-submit-state.md)
 - [UI-002 Gallery list square thumbnail](in-progress/UI-002-gallery-list-square-thumbnail.md)
 - [UI-003 Gallery management multiselect controls](in-progress/UI-003-gallery-management-multiselect-controls.md)
 - [UI-004 Gallery management confirmation modal](in-progress/UI-004-gallery-management-confirmation-modal.md)
+- [UI-005 Mobile lightbox control layout safety](in-progress/UI-005-mobile-lightbox-layout-safety.md)
+- [UI-006 Unify async operation loading border treatment](in-progress/UI-006-unify-async-operation-loading-border.md)
 
 ## Workflow
 - Create one file per issue in docs/agentic/in-progress.
