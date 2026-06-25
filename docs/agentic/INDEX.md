@@ -27,10 +27,30 @@ Human engineer comment: Not sure if we actually need this file, we could just us
 - [UI-002 Gallery list square thumbnail](in-progress/UI-002-gallery-list-square-thumbnail.md)
 - [UI-003 Gallery management multiselect controls](in-progress/UI-003-gallery-management-multiselect-controls.md)
 - [UI-004 Gallery management confirmation modal](in-progress/UI-004-gallery-management-confirmation-modal.md)
+- [UI-005 Private toggle password completion flow](in-progress/UI-005-private-toggle-password-completion-flow.md)
 - [UI-006 Unify async operation loading border treatment](in-progress/UI-006-unify-async-operation-loading-border.md)
+- [UI-007 New gallery password handoff and share access copy flow](in-progress/UI-007-new-gallery-password-share-flow.md)
 - [UI-008 Standardize auth-check no-flash loading behavior](in-progress/UI-008-reduce-gallery-view-loading-flash.md)
 
 ## Workflow
 - Create one file per issue in docs/agentic/in-progress.
+- Consider scope and create multiple files if tasks are independent
 - Move files to future status folders later if needed.
 - Keep root backlog docs as lightweight indexes only.
+
+## Quick Checks
+Use `rg` against ticket frontmatter when the index drifts from the files.
+
+```powershell
+# List every in-progress ticket title from frontmatter.
+rg -n "^title: " "docs/agentic/in-progress"
+
+# Check one ticket's title field.
+rg -n "^title: " "docs/agentic/in-progress/UI-005-private-toggle-password-completion-flow.md"
+
+# Check one ticket's full frontmatter block.
+rg -n "^(id|title|status|source|area|priority|depends_on|updated): " "docs/agentic/in-progress/UI-005-private-toggle-password-completion-flow.md"
+
+# List all tracked frontmatter fields for every in-progress ticket.
+rg -n "^(id|title|status|source|area|priority|depends_on|updated): " "docs/agentic/in-progress"
+```
