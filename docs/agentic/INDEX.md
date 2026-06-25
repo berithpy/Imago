@@ -27,8 +27,8 @@ Human engineer comment: Not sure if we actually need this file, we could just us
 - [UI-002 Gallery list square thumbnail](in-progress/UI-002-gallery-list-square-thumbnail.md)
 - [UI-003 Gallery management multiselect controls](in-progress/UI-003-gallery-management-multiselect-controls.md)
 - [UI-004 Gallery management confirmation modal](in-progress/UI-004-gallery-management-confirmation-modal.md)
-- [UI-005 Mobile lightbox control layout safety](in-progress/UI-005-mobile-lightbox-layout-safety.md)
 - [UI-006 Unify async operation loading border treatment](in-progress/UI-006-unify-async-operation-loading-border.md)
+- [UI-008 Standardize auth-check no-flash loading behavior](in-progress/UI-008-reduce-gallery-view-loading-flash.md)
 
 ## Workflow
 - Create one file per issue in docs/agentic/in-progress.
