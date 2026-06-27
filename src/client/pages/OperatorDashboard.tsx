@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { AppShell } from "@/client/components/shell/AppShell";
-import { SpinnerOverlay } from "@/client/components/Spinner";
-import { useAuth } from "@/client/lib/authContext";
+import { AuthCheckBoundary, useAuthCheck } from "@/client/lib/authGate";
 
 type Tenant = {
   id: string;
@@ -25,9 +24,12 @@ const quickLinkClass =
   "inline-block px-4 py-2 border border-neutral-800 rounded-lg text-sm text-neutral-300 hover:text-neutral-100";
 
 export function OperatorDashboard() {
-  const navigate = useNavigate();
-  const { auth, loading: authLoading } = useAuth();
-  const [sessionChecked, setSessionChecked] = useState(false);
+  const authCheck = useAuthCheck({
+    role: "super-admin",
+    loginPath: "/login",
+    returnTo: "/operator",
+    unauthorizedTo: "/login?error=not-authorized",
+  });
   const [statsLoading, setStatsLoading] = useState(true);
   const [stats, setStats] = useState<DashboardStats>({
     activeTenants: 0,
@@ -36,17 +38,9 @@ export function OperatorDashboard() {
   });
 
   useEffect(() => {
-    if (authLoading) return;
-    if (!auth) {
-      navigate("/login", { replace: true });
+    if (authCheck.outcome !== "allowed") {
       return;
     }
-    if (!auth.superAdmin) {
-      navigate("/login?error=not-authorized", { replace: true });
-      return;
-    }
-
-    setSessionChecked(true);
     setStatsLoading(true);
 
     Promise.all([
@@ -70,50 +64,50 @@ export function OperatorDashboard() {
         setStats({ activeTenants: 0, deletedTenants: 0, operatorUsers: 0 });
       })
       .finally(() => setStatsLoading(false));
-  }, [auth, authLoading, navigate]);
-
-  if (!sessionChecked || authLoading) return <SpinnerOverlay />;
+  }, [authCheck.outcome]);
 
   return (
-    <AppShell>
-      <div className="max-w-[960px] mx-auto px-6 py-10">
-        <div className="mb-8">
-          <h1 className="text-[1.75rem] font-bold">Welcome, operator</h1>
-          <p className="text-neutral-500 text-sm mt-0.5">
-            Use the platform navigation to manage tenants and operator users.
-          </p>
-        </div>
-
-        <section className="mb-8">
-          <h2 className="text-[1.1rem] font-semibold mb-3">Platform Snapshot</h2>
-          {statsLoading ? (
-            <p className="text-neutral-500 text-sm">Loading stats...</p>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className={statCardClass}>
-                <p className="text-neutral-500 text-xs uppercase tracking-wide">Active Tenants</p>
-                <p className="text-2xl font-semibold mt-1">{stats.activeTenants}</p>
-              </div>
-              <div className={statCardClass}>
-                <p className="text-neutral-500 text-xs uppercase tracking-wide">Deleted Tenants</p>
-                <p className="text-2xl font-semibold mt-1">{stats.deletedTenants}</p>
-              </div>
-              <div className={statCardClass}>
-                <p className="text-neutral-500 text-xs uppercase tracking-wide">Operator Users</p>
-                <p className="text-2xl font-semibold mt-1">{stats.operatorUsers}</p>
-              </div>
-            </div>
-          )}
-        </section>
-
-        <section>
-          <h2 className="text-[1.1rem] font-semibold mb-3">Quick Actions</h2>
-          <div className="flex flex-wrap gap-2">
-            <Link to="/operator/tenants" className={quickLinkClass}>Go to Tenants</Link>
-            <Link to="/operator/users" className={quickLinkClass}>Go to Users</Link>
+    <AuthCheckBoundary decision={authCheck}>
+      <AppShell>
+        <div className="max-w-[960px] mx-auto px-6 py-10">
+          <div className="mb-8">
+            <h1 className="text-[1.75rem] font-bold">Welcome, operator</h1>
+            <p className="text-neutral-500 text-sm mt-0.5">
+              Use the platform navigation to manage tenants and operator users.
+            </p>
           </div>
-        </section>
-      </div>
-    </AppShell>
+
+          <section className="mb-8">
+            <h2 className="text-[1.1rem] font-semibold mb-3">Platform Snapshot</h2>
+            {statsLoading ? (
+              <p className="text-neutral-500 text-sm">Loading stats...</p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className={statCardClass}>
+                  <p className="text-neutral-500 text-xs uppercase tracking-wide">Active Tenants</p>
+                  <p className="text-2xl font-semibold mt-1">{stats.activeTenants}</p>
+                </div>
+                <div className={statCardClass}>
+                  <p className="text-neutral-500 text-xs uppercase tracking-wide">Deleted Tenants</p>
+                  <p className="text-2xl font-semibold mt-1">{stats.deletedTenants}</p>
+                </div>
+                <div className={statCardClass}>
+                  <p className="text-neutral-500 text-xs uppercase tracking-wide">Operator Users</p>
+                  <p className="text-2xl font-semibold mt-1">{stats.operatorUsers}</p>
+                </div>
+              </div>
+            )}
+          </section>
+
+          <section>
+            <h2 className="text-[1.1rem] font-semibold mb-3">Quick Actions</h2>
+            <div className="flex flex-wrap gap-2">
+              <Link to="/operator/tenants" className={quickLinkClass}>Go to Tenants</Link>
+              <Link to="/operator/users" className={quickLinkClass}>Go to Users</Link>
+            </div>
+          </section>
+        </div>
+      </AppShell>
+    </AuthCheckBoundary>
   );
 }

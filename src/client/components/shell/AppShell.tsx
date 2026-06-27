@@ -33,7 +33,7 @@ export type AppShellProps = {
  * top bar plus a mobile drawer.
  */
 export function AppShell({ children, gallerySlug }: AppShellProps) {
-  const { auth, refresh } = useAuth();
+  const { auth, refresh, clearHint } = useAuth();
   const { tenantName } = useTenant();
   const params = useParams<{ tenantSlug?: string; gallerySlug?: string }>();
   const location = useLocation();
@@ -69,6 +69,7 @@ export function AppShell({ children, gallerySlug }: AppShellProps) {
 
   async function handleSignOut() {
     await authClient.signOut({ fetchOptions: { credentials: "include" } });
+    clearHint();
     await refresh();
     navigate("/login");
   }

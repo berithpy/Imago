@@ -1,31 +1,31 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { createAuthClient } from "better-auth/client";
 import { LoginCard } from "@/client/components/LoginCard";
-import { SpinnerOverlay } from "@/client/components/Spinner";
+import { AuthCheckPlaceholder } from "@/client/lib/authGate";
 import { useTenant } from "@/client/lib/tenantContext";
+import { useAuth } from "@/client/lib/authContext";
+import { buildAppReturnTo, getPostLoginRedirect } from "@/client/lib/authRedirect";
 import { buildGalleryLoginMetadata } from "@/client/lib/pageMetadata";
 import { usePageMetadata } from "@/client/lib/usePageMetadata";
-
-const authClient = createAuthClient({ baseURL: `${window.location.origin}/api/auth` });
 
 export function GalleryLogin() {
   const { gallerySlug } = useParams<{ gallerySlug: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const { apiBase, routeBase, tenantName } = useTenant();
-  const [isAdmin, setIsAdmin] = useState(false);
+  const { apiBase, routeBase, tenantName, tenantSlug } = useTenant();
+  const { auth } = useAuth();
   const [galleryId, setGalleryId] = useState<string | null>(null);
   const [galleryName, setGalleryName] = useState<string | null>(null);
   const [bypassing, setBypassing] = useState(false);
   const [checking, setChecking] = useState(true);
 
   const fallbackPath = `${routeBase}/${gallerySlug}`;
-  const requestedNext = new URLSearchParams(location.search).get("next") ?? "";
   const safeNextPath =
-    requestedNext.startsWith(fallbackPath) && !requestedNext.startsWith("//")
-      ? requestedNext
-      : fallbackPath;
+    getPostLoginRedirect(new URLSearchParams(location.search)) ??
+    buildAppReturnTo(fallbackPath);
+  const isAdmin =
+    !!auth &&
+    (auth.superAdmin || auth.memberships.some((membership) => membership.tenantSlug === tenantSlug));
 
   const metadata = buildGalleryLoginMetadata({
     galleryName,
@@ -44,11 +44,7 @@ export function GalleryLogin() {
         setChecking(false);
       })
       .catch(() => { setChecking(false); });
-
-    authClient.getSession({ fetchOptions: { credentials: "include" } })
-      .then(({ data }) => { if (data?.session) setIsAdmin(true); })
-      .catch(() => { });
-  }, [gallerySlug]);
+  }, [apiBase, gallerySlug]);
 
   async function handleAdminBypass() {
     if (!galleryId) return;
@@ -104,9 +100,7 @@ export function GalleryLogin() {
     return (
       <>
         {pageMetadata}
-        <div className="min-h-screen flex items-center justify-center">
-          <SpinnerOverlay />
-        </div>
+        <AuthCheckPlaceholder />
       </>
     );
   }

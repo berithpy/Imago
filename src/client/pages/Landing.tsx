@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createT, useLocale, type Locale } from "@/client/lib/i18n";
 import { Button } from "@/client/components/Button";
 import { useAuth } from "@/client/lib/authContext";
+import { resolveLandingNavTarget } from "@/client/lib/authHint";
 
 const dict = {
   en: {
@@ -214,7 +215,7 @@ function HeroTile({ aspect, src }: { aspect: string; src: string }) {
 
 export function Landing() {
   const { locale, setLocale } = useLocale();
-  const { auth, loading: authLoading } = useAuth();
+  const { auth, loading: authLoading, hint } = useAuth();
   const formRef = useRef<HTMLDivElement | null>(null);
   const whatRef = useRef<HTMLDivElement | null>(null);
   const [email, setEmail] = useState("");
@@ -253,13 +254,13 @@ export function Landing() {
     ref.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  const signedInHref = auth?.superAdmin
-    ? "/operator"
-    : auth?.memberships[0]
-      ? `/${auth.memberships[0].tenantSlug}/manage`
-      : "/login/resolve";
-  const navHref = auth && !authLoading ? signedInHref : "/login";
-  const navLabel = auth && !authLoading ? t(locale, "nav_dashboard") : t(locale, "nav_login");
+  const navTarget = resolveLandingNavTarget({
+    auth,
+    loading: authLoading,
+    hint,
+  });
+  const navHref = navTarget.href;
+  const navLabel = navTarget.dashboard ? t(locale, "nav_dashboard") : t(locale, "nav_login");
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();

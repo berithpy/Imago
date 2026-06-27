@@ -31,7 +31,6 @@ const GALLERY_PUBLIC_FIELDS = {
   description: galleries.description,
   is_public: galleries.isPublic,
   banner_photo_id: galleries.bannerPhotoId,
-  banner_r2_key: photos.r2Key,
   event_date: galleries.eventDate,
   expires_at: galleries.expiresAt,
   created_at: galleries.createdAt,
@@ -49,7 +48,6 @@ export async function listPublicGalleries(
   const rows = await ctx.db
     .select(GALLERY_PUBLIC_FIELDS)
     .from(galleries)
-    .leftJoin(photos, eq(photos.id, galleries.bannerPhotoId))
     .where(
       and(
         isNull(galleries.deletedAt),
@@ -59,7 +57,10 @@ export async function listPublicGalleries(
     )
     .orderBy(desc(galleries.createdAt))
     .all();
-  return rows.map(coerceListItem);
+  return Promise.all(rows.map(async (row) => coerceListItem({
+   ...row,
+   banner_r2_key: await resolveBannerR2Key(ctx, row.id, row.banner_photo_id),
+  })));
 }
 
 /**
@@ -74,12 +75,14 @@ export async function getPublicGallery(
   const row = await ctx.db
     .select(GALLERY_PUBLIC_FIELDS)
     .from(galleries)
-    .leftJoin(photos, eq(photos.id, galleries.bannerPhotoId))
     .where(and(eq(galleries.slug, slug), isNull(galleries.deletedAt), tenantPredicate(tenantId)))
     .get();
   if (!row) throw new ServiceError("NOT_FOUND", "Gallery not found");
 
-  const item = coerceListItem(row);
+  const item = coerceListItem({
+    ...row,
+    banner_r2_key: await resolveBannerR2Key(ctx, row.id, row.banner_photo_id),
+  });
   const now = Math.floor(Date.now() / 1000);
   if (item.expires_at && item.expires_at <= now) {
     throw new ServiceError("EXPIRED", "This gallery has expired");

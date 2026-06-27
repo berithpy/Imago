@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { SpinnerOverlay } from "@/client/components/Spinner";
 import { ErrorMessage } from "@/client/components/ErrorMessage";
 import { EmptyState } from "@/client/components/EmptyState";
+import { PhotoThumbnail } from "@/client/components/PhotoThumbnail";
 import { useTenant } from "@/client/lib/tenantContext";
 import { AppShell } from "@/client/components/shell/AppShell";
 
@@ -13,6 +14,7 @@ type Gallery = {
   description: string | null;
   is_public: number;
   banner_photo_id: string | null;
+  banner_r2_key: string | null;
   event_date: number | null;
   expires_at: number | null;
   created_at: number;
@@ -55,22 +57,31 @@ export function GalleryIndex() {
               <Link
                 key={g.id}
                 to={g.is_public ? `${routeBase}/${g.slug}` : `${routeBase}/${g.slug}/login`}
-                className="block px-6 py-5 bg-neutral-900 border border-neutral-800 rounded-lg text-neutral-100 transition-colors hover:border-amber-400"
+                className="flex items-center gap-4 px-6 py-5 bg-neutral-900 border border-neutral-800 rounded-lg text-neutral-100 transition-colors hover:border-amber-400"
               >
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-lg">{g.name}</span>
-                  {g.is_public ? (
-                    <span className="text-[0.7rem] px-1.5 py-0.5 rounded bg-amber-400 text-neutral-950 font-semibold">PUBLIC</span>
-                  ) : null}
+                <div className="w-20 shrink-0">
+                  {g.banner_r2_key ? (
+                    <PhotoThumbnail r2Key={g.banner_r2_key} alt={g.name} fit="cover" />
+                  ) : (
+                    <div className="aspect-square rounded-md border border-dashed border-neutral-800 bg-neutral-950" />
+                  )}
                 </div>
-                {g.description && (
-                  <div className="text-neutral-500 mt-1 text-sm">{g.description}</div>
-                )}
-                {g.event_date && (
-                  <div className="text-neutral-500 mt-1 text-[0.85rem]">
-                    {new Date(g.event_date * 1000).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-lg">{g.name}</span>
+                    {g.is_public ? (
+                      <span className="text-[0.7rem] px-1.5 py-0.5 rounded bg-amber-400 text-neutral-950 font-semibold">PUBLIC</span>
+                    ) : null}
                   </div>
-                )}
+                  {g.description && (
+                    <div className="text-neutral-500 mt-1 text-sm">{g.description}</div>
+                  )}
+                  {g.event_date && (
+                    <div className="text-neutral-500 mt-1 text-[0.85rem]">
+                      {new Date(g.event_date * 1000).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}
+                    </div>
+                  )}
+                </div>
               </Link>
             ))}
           </div>

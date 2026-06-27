@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type Ref } from "react";
 import { generatePassword } from "@/client/lib/generatePassword";
 
 type Props = {
@@ -10,6 +10,12 @@ type Props = {
   onAction?: () => void;
   actionLoading?: boolean;
   actionDone?: boolean;
+  actionLabel?: string;
+  actionLoadingLabel?: string;
+  actionDoneLabel?: string;
+  autoFocus?: boolean;
+  disabled?: boolean;
+  inputRef?: Ref<HTMLInputElement>;
 };
 
 const inputClass =
@@ -26,22 +32,32 @@ export function PasswordField({
   onAction,
   actionLoading,
   actionDone,
+  actionLabel = "Save",
+  actionLoadingLabel = "Saving...",
+  actionDoneLabel = "Saved!",
+  autoFocus,
+  disabled,
+  inputRef,
 }: Props) {
   const [reveal, setReveal] = useState(false);
 
   return (
     <div className="flex flex-wrap gap-2">
       <input
+        ref={inputRef}
         type={reveal ? "text" : "password"}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         required={required}
+        autoFocus={autoFocus}
+        disabled={disabled}
         className={inputClass}
       />
       <button
         type="button"
         onClick={() => setReveal((v) => !v)}
+        disabled={disabled}
         className={buttonClass}
         title={reveal ? "Hide" : "Reveal"}
       >
@@ -51,6 +67,7 @@ export function PasswordField({
         <button
           type="button"
           onClick={() => onChange(generatePassword())}
+          disabled={disabled}
           className={buttonClass}
           title="Generate password"
         >
@@ -61,10 +78,10 @@ export function PasswordField({
         <button
           type="button"
           onClick={onAction}
-          disabled={actionLoading}
+          disabled={disabled || actionLoading}
           className="px-4 py-2.5 bg-amber-400 border-0 rounded-lg text-neutral-950 text-sm font-semibold cursor-pointer disabled:opacity-60"
         >
-          {actionDone ? "Saved!" : actionLoading ? "Saving..." : "Save"}
+          {actionDone ? actionDoneLabel : actionLoading ? actionLoadingLabel : actionLabel}
         </button>
       )}
     </div>

@@ -1,4 +1,5 @@
-import { useState, useRef } from "react";
+import { useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { FieldError } from "@/client/components/ErrorMessage";
 import { PasswordField } from "@/client/components/PasswordField";
 import { EmailListInput } from "@/client/components/EmailListInput";
@@ -18,7 +19,8 @@ type Props = {
 };
 
 export function CreateGalleryForm({ onCreated, onCancel }: Props) {
-  const { apiBase } = useTenant();
+  const navigate = useNavigate();
+  const { apiBase, routeBase } = useTenant();
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [password, setPassword] = useState("");
@@ -109,6 +111,18 @@ export function CreateGalleryForm({ onCreated, onCancel }: Props) {
               })
             )
           );
+        }
+        if (!isPublic && data.gallery?.id) {
+          navigate(`${routeBase}/${slug}/edit`, {
+            state: {
+              shareAccess: {
+                galleryName: name,
+                gallerySlug: slug,
+                password,
+              },
+            },
+          });
+          return;
         }
         onCreated();
       } else {
