@@ -1,7 +1,7 @@
 ---
 id: UI-013
 title: Sync gallery scroll position while navigating lightbox with arrow keys
-status: in-progress
+status: completed
 source: ad-hoc
 area: gallery-view
 priority: medium
@@ -16,13 +16,14 @@ The gallery already has logic to focus and scroll to a specific photo in some na
 Keep the gallery page scrolled to the photo currently displayed in the lightbox while navigating with lightbox arrow controls.
 
 ## Acceptance Criteria
-- [ ] When the lightbox moves to the next photo via arrow navigation, the page scroll updates to keep that photo in view in the gallery.
-- [ ] When the lightbox moves to the previous photo via arrow navigation, the page scroll updates to keep that photo in view in the gallery.
-- [ ] Existing "open lightbox on specific photo and scroll to it" behavior continues to work unchanged.
-- [ ] No regressions are introduced for non-lightbox gallery navigation or selection interactions.
+- [x] When the lightbox moves to the next photo via arrow navigation, the page scroll updates to keep that photo in view in the gallery.
+- [x] When the lightbox moves to the previous photo via arrow navigation, the page scroll updates to keep that photo in view in the gallery.
+- [x] Existing "open lightbox on specific photo and scroll to it" behavior continues to work unchanged.
+- [x] No regressions are introduced for non-lightbox gallery navigation or selection interactions.
 
 ## Notes
 Apply the same photo-targeting scroll behavior currently used for direct photo targeting/open actions to lightbox next/previous transitions.
 
 ## Change Log
 - 2026-06-27: Created.
+- 2026-06-27: Completed by reusing masonry scroll targeting during lightbox arrow navigation.

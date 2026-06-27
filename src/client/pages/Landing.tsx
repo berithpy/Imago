@@ -10,6 +10,7 @@ const dict = {
     nav_lang_es: "ES",
     nav_login: "Log in",
     nav_dashboard: "Dashboard",
+    nav_about: "About",
 
     hero_tagline: "A simple hosted gallery service for photographers.",
     hero_subtagline:
@@ -77,6 +78,7 @@ const dict = {
     nav_lang_es: "ES",
     nav_login: "Entrar",
     nav_dashboard: "Panel",
+    nav_about: "Acerca de",
 
     hero_tagline: "Un servicio simple de galerías para fotógrafos.",
     hero_subtagline:
@@ -294,6 +296,12 @@ export function Landing() {
         <div className="max-w-6xl mx-auto px-6 sm:px-10 py-5 flex items-center justify-between">
           <div className="text-xl font-semibold tracking-tight text-amber-400">Imago</div>
           <div className="flex items-center gap-4">
+            <a
+              href="/about"
+              className="text-sm text-neutral-400 hover:text-neutral-200 transition-colors"
+            >
+              {t(locale, "nav_about")}
+            </a>
             <a
               href={navHref}
               className="text-sm text-neutral-400 hover:text-neutral-200 transition-colors"
@@ -589,7 +597,7 @@ export function Landing() {
             </span>
           </div>
           <a
-            href="mailto:imago@berith.py"
+            href="mailto:imago-support@imago.berith.moe"
             className="text-neutral-400 hover:text-amber-300"
           >
             {t(locale, "footer_contact")}

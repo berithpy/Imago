@@ -12,6 +12,7 @@ import { OperatorUsers } from "@/client/pages/OperatorUsers";
 import { UniversalLogin } from "@/client/pages/UniversalLogin";
 import { LoginResolve } from "@/client/pages/LoginResolve";
 import { Landing } from "@/client/pages/Landing";
+import { About } from "@/client/pages/About";
 import {
   MembersPage,
   SubscribersPage,
@@ -39,6 +40,7 @@ export default function App() {
     <Routes>
       {/* Public landing page */}
       <Route path="/" element={<Landing />} />
+      <Route path="/about" element={<About />} />
 
       {/* Universal login (admin + super-admin entry point) */}
       <Route path="/login" element={<UniversalLogin />} />

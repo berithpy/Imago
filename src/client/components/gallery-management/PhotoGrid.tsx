@@ -1,10 +1,18 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
+import { useLongPress } from "@uidotdev/usehooks";
 import { ConfirmationModal } from "@/client/components/ConfirmationModal";
 import { ErrorMessage } from "@/client/components/ErrorMessage";
 import { PhotoThumbnail } from "@/client/components/PhotoThumbnail";
 import { useTenant } from "@/client/lib/tenantContext";
 import type { Gallery, Photo } from "@/client/lib/galleryManagement";
 import { formatSize } from "@/client/lib/galleryManagement";
+import {
+  getAvailableGalleryViewModes,
+  getDefaultGalleryViewMode,
+  getSafeGalleryViewMode,
+  shouldShowKeyboardHint,
+  type GalleryManagementViewMode,
+} from "@/client/lib/galleryManagementViewMode";
 
 type Props = {
   galleryId: string;
@@ -21,6 +29,126 @@ type DeleteRequest = {
   confirmLabel: string;
 };
 
+type PhotoTileProps = {
+  photo: Photo;
+  index: number;
+  total: number;
+  isListMode: boolean;
+  isSmallGridMode: boolean;
+  isBanner: boolean;
+  isSelected: boolean;
+  isActive: boolean;
+  isDeleting: boolean;
+  settingBanner: boolean;
+  showInfo: boolean;
+  isTouchDevice: boolean;
+  onFocus: () => void;
+  onActivate: () => void;
+  onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => void;
+  onSetBanner: () => void;
+  onPreview: () => void;
+};
+
+const PhotoTile = forwardRef<HTMLDivElement, PhotoTileProps>(function PhotoTile({
+  photo,
+  index,
+  total,
+  isListMode,
+  isSmallGridMode,
+  isBanner,
+  isSelected,
+  isActive,
+  isDeleting,
+  settingBanner,
+  showInfo,
+  isTouchDevice,
+  onFocus,
+  onActivate,
+  onKeyDown,
+  onSetBanner,
+  onPreview,
+}, ref) {
+  const [isPressing, setIsPressing] = useState(false);
+
+  useEffect(() => {
+    if (!isTouchDevice) {
+      setIsPressing(false);
+    }
+  }, [isTouchDevice]);
+
+  const longPressAttrs = useLongPress(
+    () => {
+      if (!isTouchDevice) return;
+      if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+        navigator.vibrate(20);
+      }
+    },
+    {
+      onStart: () => {
+        if (!isTouchDevice) return;
+        setIsPressing(true);
+      },
+      onCancel: () => {
+        if (!isTouchDevice) return;
+        setIsPressing(false);
+      },
+      onFinish: () => {
+        if (!isTouchDevice) return;
+        setIsPressing(false);
+      },
+    }
+  );
+
+  return (
+    <div
+      ref={ref}
+      data-photo-tile="true"
+      role="option"
+      aria-selected={isSelected}
+      tabIndex={isActive ? 0 : -1}
+      onFocus={onFocus}
+      onClick={onActivate}
+      onKeyDown={onKeyDown}
+      onContextMenu={(event) => {
+        if (isTouchDevice) event.preventDefault();
+      }}
+      {...longPressAttrs}
+      className={`group relative select-none border bg-neutral-900 outline-none transition-colors focus-visible:border-neutral-400 focus-visible:bg-neutral-800 focus-visible:ring-1 focus-visible:ring-neutral-500 ${isListMode ? "p-2.5" : "p-3"} ${isSelected
+        ? "border-amber-400 bg-neutral-800/80"
+        : isActive
+          ? "border-neutral-500 bg-neutral-700/55"
+          : "border-neutral-800 hover:border-neutral-500 hover:bg-neutral-700/45"
+        } ${isDeleting ? "opacity-60" : ""}`}
+    >
+      <PhotoThumbnail
+        r2Key={photo.r2_key}
+        alt={photo.original_name}
+        fit="cover"
+        sharp
+        onClick={onPreview}
+        index={showInfo ? index + 1 : undefined}
+        total={showInfo ? total : undefined}
+        marked={showInfo ? isSelected : false}
+        showBannerBadge={showInfo}
+        bannerActive={isBanner}
+        onBannerClick={() => {
+          void onSetBanner();
+        }}
+        filename={showInfo ? photo.original_name : undefined}
+        size={showInfo ? formatSize(photo.size) : undefined}
+      />
+
+      {isTouchDevice ? (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1 bg-neutral-800/80">
+          <div
+            className={`h-full bg-amber-400 transition-[width] duration-400 ${isPressing ? "w-full" : "w-0"}`}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+});
+
 export function PhotoGrid({
   galleryId,
   gallery,
@@ -35,9 +163,18 @@ export function PhotoGrid({
   const [settingBanner, setSettingBanner] = useState(false);
   const [selectedPhotoIds, setSelectedPhotoIds] = useState<string[]>([]);
   const [activePhotoId, setActivePhotoId] = useState<string | null>(photos[0]?.id ?? null);
+  const [viewportWidth, setViewportWidth] = useState<number>(() => window.innerWidth);
+  const [viewMode, setViewMode] = useState<GalleryManagementViewMode>(() =>
+    getDefaultGalleryViewMode(window.innerWidth)
+  );
   const [error, setError] = useState<string | null>(null);
   const [deleteRequest, setDeleteRequest] = useState<DeleteRequest | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [showInfo, setShowInfo] = useState(true);
+  const [isTouchDevice, setIsTouchDevice] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia("(hover: none), (pointer: coarse)").matches;
+  });
 
   useEffect(() => {
     const validIds = new Set(photos.map((photo) => photo.id));
@@ -48,9 +185,34 @@ export function PhotoGrid({
     });
   }, [photos]);
 
+  useEffect(() => {
+    function syncViewportMode() {
+      setViewportWidth(window.innerWidth);
+      setViewMode((current) => getSafeGalleryViewMode(current, window.innerWidth));
+    }
+
+    window.addEventListener("resize", syncViewportMode);
+    return () => window.removeEventListener("resize", syncViewportMode);
+  }, []);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(hover: none), (pointer: coarse)");
+    const updateTouchMode = () => setIsTouchDevice(mediaQuery.matches);
+    updateTouchMode();
+    mediaQuery.addEventListener("change", updateTouchMode);
+    return () => mediaQuery.removeEventListener("change", updateTouchMode);
+  }, []);
+
   const selectedSet = useMemo(() => new Set(selectedPhotoIds), [selectedPhotoIds]);
   const selectedCount = selectedPhotoIds.length;
   const deletingSet = useMemo(() => new Set(deletingPhotoIds), [deletingPhotoIds]);
+  const availableViewModes = useMemo(
+    () => getAvailableGalleryViewModes(viewportWidth),
+    [viewportWidth]
+  );
+  const showKeyboardNavHint = shouldShowKeyboardHint(viewportWidth);
+  const isListMode = viewMode === "list";
+  const isSmallGridMode = viewMode === "small-grid";
 
   function focusPhoto(photoId: string) {
     setActivePhotoId(photoId);
@@ -238,12 +400,36 @@ export function PhotoGrid({
 
   return (
     <>
-      <div className="mb-4 rounded-lg border border-neutral-800 bg-neutral-900 px-4 py-3">
+      <div className="sticky top-2 z-30 mb-4 rounded-lg border border-neutral-800 bg-neutral-900 px-4 py-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm text-neutral-100">
               {selectedCount > 0 ? `${selectedCount} selected` : "No photos selected"}
             </span>
+            <div className="ml-1 flex items-center gap-1.5 rounded-lg border border-neutral-800 p-1">
+              {availableViewModes.map((mode) => {
+                const isActive = mode === viewMode;
+                const label = mode === "small-grid"
+                  ? "Small grid"
+                  : mode === "list"
+                    ? "List"
+                    : "Grid";
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setViewMode(mode)}
+                    aria-pressed={isActive}
+                    className={`rounded-md px-2.5 py-1.5 text-xs transition-colors ${isActive
+                      ? "bg-amber-400 text-neutral-950"
+                      : "text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
+                      }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
             <button
               type="button"
               onClick={selectAll}
@@ -258,6 +444,15 @@ export function PhotoGrid({
               className="rounded-lg border border-neutral-800 px-3 py-1.5 text-xs text-neutral-400 disabled:opacity-50"
             >
               Select none
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowInfo((current) => !current)}
+              title={showInfo ? "Hide photo info overlays" : "Show photo info overlays"}
+              className={`px-3 py-1.5 border border-neutral-800 rounded-lg text-xs font-mono whitespace-nowrap transition-colors cursor-pointer ${showInfo ? "bg-neutral-900 text-neutral-100" : "bg-transparent text-neutral-500"
+                }`}
+            >
+              {showInfo ? "Info on" : "Info off"}
             </button>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -275,14 +470,16 @@ export function PhotoGrid({
               disabled={selectedCount === 0 || deletingPhotoIds.length > 0}
               className="rounded-lg border border-neutral-800 px-3 py-1.5 text-xs text-red-400 disabled:opacity-50"
             >
-              {deletingPhotoIds.length > 0 ? "Deleting..." : "Delete selected"}
+              {deletingPhotoIds.length > 0 ? "Deleting..." : `Delete (${selectedCount})`}
             </button>
           </div>
         </div>
-        <p className="mt-3 text-[0.78rem] text-neutral-500">
-          Arrow keys move focus. Space or X selects. B stars the focused photo. Delete removes the
-          selection. Esc clears selection.
-        </p>
+        {showKeyboardNavHint ? (
+          <p className="mt-3 text-[0.78rem] text-neutral-500">
+            Arrow keys move focus. Space or X selects. B stars the focused photo. Delete removes
+            the selection. Esc clears selection. On touch devices, hold a tile to reveal actions.
+          </p>
+        ) : null}
       </div>
 
       {error ? <ErrorMessage message={error} /> : null}
@@ -292,84 +489,45 @@ export function PhotoGrid({
         role="listbox"
         aria-label="Gallery photos"
         aria-multiselectable="true"
-        className="grid gap-4 grid-cols-[repeat(auto-fill,minmax(220px,1fr))]"
+        className={`grid ${isListMode
+          ? "gap-3 grid-cols-1"
+          : isSmallGridMode
+            ? "gap-3 grid-cols-[repeat(auto-fill,minmax(140px,1fr))]"
+            : "gap-4 grid-cols-[repeat(auto-fill,minmax(220px,1fr))]"
+          }`}
       >
-        {photos.map((photo) => {
+        {photos.map((photo, index) => {
           const isBanner = gallery?.banner_photo_id === photo.id;
           const isSelected = selectedSet.has(photo.id);
           const isActive = activePhotoId === photo.id;
           const isDeleting = deletingSet.has(photo.id);
 
           return (
-            <div
+            <PhotoTile
               key={photo.id}
-              data-photo-tile="true"
               ref={(node) => {
                 photoRefs.current[photo.id] = node;
               }}
-              role="option"
-              aria-selected={isSelected}
-              tabIndex={isActive ? 0 : -1}
+              photo={photo}
+              index={index}
+              total={photos.length}
+              isListMode={isListMode}
+              isSmallGridMode={isSmallGridMode}
+              isBanner={isBanner}
+              isSelected={isSelected}
+              isActive={isActive}
+              isDeleting={isDeleting}
+              settingBanner={settingBanner}
+              showInfo={showInfo}
+              isTouchDevice={isTouchDevice}
               onFocus={() => setActivePhotoId(photo.id)}
-              onClick={() => setActivePhotoId(photo.id)}
+              onActivate={() => setActivePhotoId(photo.id)}
               onKeyDown={(event) => handleTileKeyDown(event, photo.id)}
-              className={`rounded-lg border bg-neutral-900 p-3 outline-none transition-colors focus-visible:border-neutral-400 focus-visible:bg-neutral-800 focus-visible:ring-1 focus-visible:ring-neutral-500 ${isSelected
-                ? "border-amber-400"
-                : isActive
-                  ? "border-neutral-500 bg-neutral-700/55"
-                  : "border-neutral-800 hover:border-neutral-500 hover:bg-neutral-700/45"
-                } ${isDeleting ? "opacity-60" : ""}`}
-            >
-              <div className="relative">
-                <PhotoThumbnail
-                  r2Key={photo.r2_key}
-                  alt={photo.original_name}
-                  fit="cover"
-                  style={{ marginBottom: 10 }}
-                />
-                <button
-                  type="button"
-                  onClick={() => void handleSetBanner(photo.id)}
-                  disabled={settingBanner}
-                  title={isBanner ? "Remove banner" : "Set as banner"}
-                  aria-label={isBanner ? "Remove banner photo" : "Set as banner photo"}
-                  className={`absolute left-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded border-0 p-0 text-sm leading-none ${isBanner ? "bg-amber-400 text-neutral-950" : "bg-black/55 text-white"
-                    }`}
-                >
-                  {isBanner ? "\u2605" : "\u2606"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => toggleSelection(photo.id)}
-                  aria-pressed={isSelected}
-                  aria-label={isSelected ? "Deselect photo" : "Select photo"}
-                  className={`absolute right-1.5 top-1.5 flex h-7 min-w-7 items-center justify-center rounded border px-1.5 text-xs ${isSelected
-                    ? "border-amber-400 bg-amber-400 text-neutral-950"
-                    : "border-neutral-700 bg-black/55 text-white"
-                    }`}
-                >
-                  {isSelected ? "✓" : "○"}
-                </button>
-              </div>
-
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="truncate text-xs font-medium text-neutral-100">
-                    {photo.original_name}
-                  </div>
-                  <div className="text-[0.75rem] text-neutral-500">{formatSize(photo.size)}</div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => requestDelete([photo.id])}
-                  disabled={isDeleting}
-                  title="Delete photo"
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-neutral-800 bg-transparent p-0 text-xs text-red-400 disabled:opacity-50"
-                >
-                  {isDeleting ? "..." : "X"}
-                </button>
-              </div>
-            </div>
+              onSetBanner={() => handleSetBanner(photo.id)}
+              onPreview={() => {
+                window.open(`/api/images/${photo.r2_key}?variant=full`, "_blank", "noopener,noreferrer");
+              }}
+            />
           );
         })}
       </div>

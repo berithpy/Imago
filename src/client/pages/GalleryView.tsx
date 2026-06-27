@@ -323,6 +323,7 @@ export function GalleryView() {
     const currentIndex = getActivePhotoIndex(photos, lightbox.id);
     const targetIndex = getNavigationTargetIndex(currentIndex, photos.length, offset);
     if (targetIndex < 0) return;
+    setPendingScrollToIndex(targetIndex);
     openLightbox(photos[targetIndex]);
   }, [lightbox, photos, openLightbox]);
 
