@@ -1,12 +1,12 @@
 ---
 id: UI-008
 title: Standardize auth-check no-flash loading behavior
-status: in-progress
+status: done
 source: ad-hoc
 area: auth-routing
 priority: medium
 depends_on: []
-updated: 2026-06-25
+updated: 2026-06-27
 ---
 
 ## Context

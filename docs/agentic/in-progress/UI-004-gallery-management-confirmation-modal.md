@@ -1,12 +1,12 @@
 ---
 id: UI-004
 title: Gallery management confirmation modal
-status: in-progress
+status: done
 source: MINOR_UI_ISSUES
 area: gallery-management
 priority: medium
 depends_on: []
-updated: 2026-06-25
+updated: 2026-06-27
 ---
 
 ## Context

@@ -1,12 +1,12 @@
 ---
 id: UI-007
 title: New gallery password handoff and share access copy flow
-status: in-progress
+status: done
 source: ad-hoc
 area: gallery-management
 priority: medium
 depends_on: []
-updated: 2026-06-25
+updated: 2026-06-27
 ---
 
 ## Context

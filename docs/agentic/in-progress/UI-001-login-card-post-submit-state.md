@@ -1,12 +1,12 @@
 ---
 id: UI-001
 title: Login card post-submit state
-status: in-progress
+status: done
 source: MINOR_UI_ISSUES
 area: auth-ui
 priority: medium
 depends_on: []
-updated: 2026-06-25
+updated: 2026-06-27
 ---
 
 ## Context

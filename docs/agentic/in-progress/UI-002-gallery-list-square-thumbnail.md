@@ -1,12 +1,12 @@
 ---
 id: UI-002
 title: Gallery list square thumbnail
-status: in-progress
+status: done
 source: MINOR_UI_ISSUES
 area: gallery-list
 priority: medium
 depends_on: []
-updated: 2026-06-19
+updated: 2026-06-27
 ---
 
 ## Context

@@ -1,7 +1,7 @@
 ---
 id: UI-006
 title: Unify async operation loading border treatment
-status: in-progress
+status: done
 source: MINOR_UI_ISSUES
 area: gallery-management
 priority: medium
