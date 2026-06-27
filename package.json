@@ -22,6 +22,7 @@
 	},
 	"dependencies": {
 		"@hono/node-server": "^1.19.9",
+		"@uidotdev/usehooks": "^2.4.1",
 		"@vitejs/plugin-react": "^5.1.4",
 		"better-auth": "^1.4.19",
 		"drizzle-orm": "^0.45.1",
@@ -29,6 +30,7 @@
 		"hono": "^4.12.2",
 		"kysely": "^0.28.11",
 		"kysely-d1": "^0.4.0",
+		"lucide-react": "^1.21.0",
 		"masonic": "^4.1.0",
 		"react": "^19.2.4",
 		"react-dom": "^19.2.4",

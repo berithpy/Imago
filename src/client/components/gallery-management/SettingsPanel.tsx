@@ -202,6 +202,8 @@ export function SettingsPanel({
     }
   }
 
+  const showPasswordResetSection = !gallery.is_public || pendingPrivateCompletion;
+
   return (
     <form
       onSubmit={handleSaveSettings}
@@ -277,7 +279,7 @@ export function SettingsPanel({
       </div>
       <hr className="border-neutral-800" />
       <VisibilityToggle
-        isPublic={!!gallery.is_public}
+        isPublic={pendingPrivateCompletion ? false : !!gallery.is_public}
         loading={togglingVisibility}
         disabled={togglingVisibility}
         onChange={handleToggleVisibility}
@@ -287,20 +289,22 @@ export function SettingsPanel({
             : undefined
         }
       />
-      <PasswordResetSection
-        galleryId={galleryId}
-        pendingPrivateCompletion={pendingPrivateCompletion}
-        onPrivateCompletion={() => updateVisibility(false)}
-        onCancelPrivateCompletion={() => setPendingPrivateCompletion(false)}
-        onPasswordSaved={(password) => {
-          setPendingShareAccess({
-            galleryName: gallery.name,
-            gallerySlug: gallery.slug,
-            password,
-          });
-          setShowShareAccessPanel(true);
-        }}
-      />
+      {showPasswordResetSection ? (
+        <PasswordResetSection
+          galleryId={galleryId}
+          pendingPrivateCompletion={pendingPrivateCompletion}
+          onPrivateCompletion={() => updateVisibility(false)}
+          onCancelPrivateCompletion={() => setPendingPrivateCompletion(false)}
+          onPasswordSaved={(password) => {
+            setPendingShareAccess({
+              galleryName: gallery.name,
+              gallerySlug: gallery.slug,
+              password,
+            });
+            setShowShareAccessPanel(true);
+          }}
+        />
+      ) : null}
 
       {showShareAccessPanel && pendingShareAccess ? (
         <ShareAccessPanel
