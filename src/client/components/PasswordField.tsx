@@ -1,5 +1,6 @@
 import { useState, type Ref } from "react";
 import { generatePassword } from "@/client/lib/generatePassword";
+import { getPasswordInputClassName } from "@/client/lib/passwordFieldClasses";
 
 type Props = {
   value: string;
@@ -13,13 +14,12 @@ type Props = {
   actionLabel?: string;
   actionLoadingLabel?: string;
   actionDoneLabel?: string;
+  inputLoading?: boolean;
   autoFocus?: boolean;
   disabled?: boolean;
   inputRef?: Ref<HTMLInputElement>;
 };
 
-const inputClass =
-  "flex-1 min-w-0 px-3.5 py-2.5 bg-neutral-950 border border-neutral-800 rounded-lg text-neutral-100 text-sm outline-none";
 const buttonClass =
   "px-4 py-2.5 bg-transparent border border-neutral-800 rounded-lg text-neutral-500 text-sm cursor-pointer disabled:opacity-50";
 
@@ -35,55 +35,63 @@ export function PasswordField({
   actionLabel = "Save",
   actionLoadingLabel = "Saving...",
   actionDoneLabel = "Saved!",
+  inputLoading = false,
   autoFocus,
   disabled,
   inputRef,
 }: Props) {
   const [reveal, setReveal] = useState(false);
+  const hasSecondaryActions = Boolean(showGenerate || onAction);
 
   return (
-    <div className="flex flex-wrap gap-2">
-      <input
-        ref={inputRef}
-        type={reveal ? "text" : "password"}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        required={required}
-        autoFocus={autoFocus}
-        disabled={disabled}
-        className={inputClass}
-      />
-      <button
-        type="button"
-        onClick={() => setReveal((v) => !v)}
-        disabled={disabled}
-        className={buttonClass}
-        title={reveal ? "Hide" : "Reveal"}
-      >
-        {reveal ? "Hide" : "Show"}
-      </button>
-      {showGenerate && (
-        <button
-          type="button"
-          onClick={() => onChange(generatePassword())}
+    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+      <div className="flex w-full min-w-0 gap-2 sm:flex-1 sm:min-w-[18rem]">
+        <input
+          ref={inputRef}
+          type={reveal ? "text" : "password"}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          required={required}
+          autoFocus={autoFocus}
           disabled={disabled}
-          className={buttonClass}
-          title="Generate password"
-        >
-          Generate
-        </button>
-      )}
-      {onAction && (
+          className={getPasswordInputClassName(inputLoading)}
+        />
         <button
           type="button"
-          onClick={onAction}
-          disabled={disabled || actionLoading}
-          className="px-4 py-2.5 bg-amber-400 border-0 rounded-lg text-neutral-950 text-sm font-semibold cursor-pointer disabled:opacity-60"
+          onClick={() => setReveal((v) => !v)}
+          disabled={disabled}
+          className={`${buttonClass} shrink-0`}
+          title={reveal ? "Hide" : "Reveal"}
         >
-          {actionDone ? actionDoneLabel : actionLoading ? actionLoadingLabel : actionLabel}
+          {reveal ? "Hide" : "Show"}
         </button>
-      )}
+      </div>
+      {hasSecondaryActions ? (
+        <div className="flex w-full gap-2 sm:w-auto sm:flex-wrap sm:justify-end">
+          {showGenerate && (
+            <button
+              type="button"
+              onClick={() => onChange(generatePassword())}
+              disabled={disabled}
+              className={`${buttonClass} flex-1 sm:flex-none`}
+              title="Generate password"
+            >
+              Generate
+            </button>
+          )}
+          {onAction && (
+            <button
+              type="button"
+              onClick={onAction}
+              disabled={disabled || actionLoading}
+              className="flex-1 px-4 py-2.5 bg-amber-400 border-0 rounded-lg text-neutral-950 text-sm font-semibold cursor-pointer disabled:opacity-60 sm:flex-none"
+            >
+              {actionDone ? actionDoneLabel : actionLoading ? actionLoadingLabel : actionLabel}
+            </button>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -2,7 +2,6 @@ import { useRef, useState } from "react";
 import { ErrorMessage } from "@/client/components/ErrorMessage";
 import { useTenant } from "@/client/lib/tenantContext";
 import { PasswordField } from "@/client/components/PasswordField";
-import { getAsyncPanelClassName } from "@/client/lib/asyncPanel";
 
 type Props = {
   galleryId: string;
@@ -36,7 +35,16 @@ export function PasswordResetSection({
         credentials: "include",
         body: JSON.stringify({ password: newPassword }),
       });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        let responseError: string | null = null;
+        try {
+          const data = (await res.json()) as { error?: string; message?: string };
+          responseError = data.error ?? data.message ?? null;
+        } catch {
+          responseError = null;
+        }
+        throw new Error(responseError ?? "Failed to save the gallery password.");
+      }
       passwordSaved = true;
       if (pendingPrivateCompletion && onPrivateCompletion) {
         await onPrivateCompletion();
@@ -44,11 +52,12 @@ export function PasswordResetSection({
       setNewPassword("");
       setPasswordResetDone(true);
       setTimeout(() => setPasswordResetDone(false), 2500);
-    } catch {
+    } catch (err) {
+      const resolvedError = err instanceof Error && err.message ? err.message : null;
       setError(
         passwordSaved && pendingPrivateCompletion
           ? "Password saved, but the gallery is still public. Try again to finish making it private."
-          : "Failed to save the gallery password."
+          : resolvedError ?? "Failed to save the gallery password."
       );
       passwordInputRef.current?.focus();
     } finally {
@@ -63,7 +72,7 @@ export function PasswordResetSection({
       </label>
       <div
         aria-busy={resettingPassword ? "true" : undefined}
-        className={getAsyncPanelClassName(resettingPassword)}
+        className="py-0.5"
       >
         {pendingPrivateCompletion ? (
           <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
@@ -96,6 +105,7 @@ export function PasswordResetSection({
           actionDone={passwordResetDone}
           actionLabel={pendingPrivateCompletion ? "Save password & make private" : "Save"}
           actionLoadingLabel={pendingPrivateCompletion ? "Saving & locking..." : "Saving..."}
+          inputLoading={resettingPassword}
           showGenerate
           autoFocus={pendingPrivateCompletion}
           inputRef={passwordInputRef}

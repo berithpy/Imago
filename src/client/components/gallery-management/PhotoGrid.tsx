@@ -313,11 +313,11 @@ export function PhotoGrid({
               onFocus={() => setActivePhotoId(photo.id)}
               onClick={() => setActivePhotoId(photo.id)}
               onKeyDown={(event) => handleTileKeyDown(event, photo.id)}
-              className={`rounded-lg border bg-neutral-900 p-3 outline-none transition-colors ${isSelected
+              className={`rounded-lg border bg-neutral-900 p-3 outline-none transition-colors focus-visible:border-neutral-400 focus-visible:bg-neutral-800 focus-visible:ring-1 focus-visible:ring-neutral-500 ${isSelected
                 ? "border-amber-400"
                 : isActive
-                  ? "border-neutral-600"
-                  : "border-neutral-800"
+                  ? "border-neutral-500 bg-neutral-700/55"
+                  : "border-neutral-800 hover:border-neutral-500 hover:bg-neutral-700/45"
                 } ${isDeleting ? "opacity-60" : ""}`}
             >
               <div className="relative">
