@@ -8,6 +8,7 @@ type Props = {
   pendingPrivateCompletion?: boolean;
   onPrivateCompletion?: () => Promise<void>;
   onCancelPrivateCompletion?: () => void;
+  onPasswordSaved?: (password: string) => void;
 };
 
 export function PasswordResetSection({
@@ -15,6 +16,7 @@ export function PasswordResetSection({
   pendingPrivateCompletion = false,
   onPrivateCompletion,
   onCancelPrivateCompletion,
+  onPasswordSaved,
 }: Props) {
   const { apiBase } = useTenant();
   const [newPassword, setNewPassword] = useState("");
@@ -25,6 +27,7 @@ export function PasswordResetSection({
 
   async function handleResetPassword() {
     if (!newPassword) return;
+    const submittedPassword = newPassword;
     setError(null);
     setResettingPassword(true);
     let passwordSaved = false;
@@ -49,6 +52,7 @@ export function PasswordResetSection({
       if (pendingPrivateCompletion && onPrivateCompletion) {
         await onPrivateCompletion();
       }
+      onPasswordSaved?.(submittedPassword);
       setNewPassword("");
       setPasswordResetDone(true);
       setTimeout(() => setPasswordResetDone(false), 2500);

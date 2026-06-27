@@ -2,10 +2,11 @@ import { useEffect, useState } from "react";
 import { ConfirmationModal } from "@/client/components/ConfirmationModal";
 import { ErrorMessage } from "@/client/components/ErrorMessage";
 import { useTenant } from "@/client/lib/tenantContext";
-import type { Gallery } from "@/client/lib/galleryManagement";
+import type { Gallery, NewGalleryShareAccessState } from "@/client/lib/galleryManagement";
 import { toDateInputValue } from "@/client/lib/galleryManagement";
 import { PasswordResetSection } from "@/client/components/gallery-management/PasswordResetSection";
 import { VisibilityToggle } from "@/client/components/gallery-management/VisibilityToggle";
+import { ShareAccessPanel } from "@/client/components/gallery-management/ShareAccessPanel";
 
 type Props = {
   galleryId: string;
@@ -29,7 +30,7 @@ export function SettingsPanel({
   onGalleryUpdated,
   onPermanentDeleteSuccess,
 }: Props) {
-  const { apiBase } = useTenant();
+  const { apiBase, routeBase } = useTenant();
   const [settingsName, setSettingsName] = useState("");
   const [settingsEventDate, setSettingsEventDate] = useState("");
   const [settingsExpiresAt, setSettingsExpiresAt] = useState("");
@@ -38,6 +39,8 @@ export function SettingsPanel({
   const [togglingVisibility, setTogglingVisibility] = useState(false);
   const [deletingGallery, setDeletingGallery] = useState(false);
   const [pendingPrivateCompletion, setPendingPrivateCompletion] = useState(false);
+  const [pendingShareAccess, setPendingShareAccess] = useState<NewGalleryShareAccessState | null>(null);
+  const [showShareAccessPanel, setShowShareAccessPanel] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [confirmation, setConfirmation] = useState<null | {
@@ -56,6 +59,11 @@ export function SettingsPanel({
       setPendingPrivateCompletion(false);
     }
   }, [gallery]);
+
+  useEffect(() => {
+    setPendingShareAccess(null);
+    setShowShareAccessPanel(false);
+  }, [gallery.id]);
 
   async function updateVisibility(next: boolean) {
     setSettingsError(null);
@@ -284,7 +292,26 @@ export function SettingsPanel({
         pendingPrivateCompletion={pendingPrivateCompletion}
         onPrivateCompletion={() => updateVisibility(false)}
         onCancelPrivateCompletion={() => setPendingPrivateCompletion(false)}
+        onPasswordSaved={(password) => {
+          setPendingShareAccess({
+            galleryName: gallery.name,
+            gallerySlug: gallery.slug,
+            password,
+          });
+          setShowShareAccessPanel(true);
+        }}
       />
+
+      {showShareAccessPanel && pendingShareAccess ? (
+        <ShareAccessPanel
+          {...pendingShareAccess}
+          routeBase={routeBase}
+          onConsumed={() => {
+            setPendingShareAccess(null);
+            setShowShareAccessPanel(false);
+          }}
+        />
+      ) : null}
 
       <hr className="border-neutral-800" />
       <div>

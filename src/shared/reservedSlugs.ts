@@ -12,6 +12,7 @@
  */
 export const RESERVED_TENANT_SLUGS: readonly string[] = [
   "login",
+  "about",
   "operator",
   "gallery",
   "api",
