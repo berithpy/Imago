@@ -1,11 +1,11 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, MouseEvent } from "react";
 
 type Props = {
   r2Key: string;
   alt: string;
   fit?: "cover" | "full-width";
   style?: CSSProperties;
-  onClick?: () => void;
+  onClick?: (event: MouseEvent<HTMLDivElement>) => void;
   index?: number;
   total?: number;
   marked?: boolean;
@@ -15,6 +15,7 @@ type Props = {
   filename?: string;
   size?: string;
   sharp?: boolean;
+  onIndexClick?: () => void;
 };
 
 const badgeClass =
@@ -36,6 +37,7 @@ export function PhotoThumbnail({
   filename,
   size,
   sharp = false,
+  onIndexClick,
 }: Props) {
   const url = `/api/images/${r2Key}?variant=thumb`;
   const wrapperBase =
@@ -69,19 +71,43 @@ export function PhotoThumbnail({
         className="photo-skeleton absolute inset-0 bg-gradient-to-r from-neutral-800 via-neutral-700 to-neutral-800 bg-[length:200%_100%]"
         style={{ animation: "shimmer 1.5s ease-in-out infinite" }}
       />
-      {index !== undefined && total !== undefined && (
-        <span className={`${badgeClass} pointer-events-none top-1.5 right-1.5 inline-flex items-center gap-1`} style={badgeFont}>
-          <span>
-            {index} / {total}
+      {index !== undefined && total !== undefined ? (
+        onIndexClick ? (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onIndexClick();
+            }}
+            aria-label={marked ? "Unmark photo" : "Mark photo"}
+            title={marked ? "Unmark" : "Mark"}
+            className={`${badgeClass} pointer-events-auto top-1.5 right-1.5 inline-flex items-center gap-1 border-0 p-0 hover:bg-black/70`}
+            style={badgeFont}
+          >
+            <span>
+              {index} / {total}
+            </span>
+            {marked ? (
+              <span
+                aria-hidden="true"
+                className="inline-block h-1.5 w-1.5 rounded-full bg-white/90"
+              />
+            ) : null}
+          </button>
+        ) : (
+          <span className={`${badgeClass} pointer-events-none top-1.5 right-1.5 inline-flex items-center gap-1`} style={badgeFont}>
+            <span>
+              {index} / {total}
+            </span>
+            {marked ? (
+              <span
+                aria-hidden="true"
+                className="inline-block h-1.5 w-1.5 rounded-full bg-white/90"
+              />
+            ) : null}
           </span>
-          {marked ? (
-            <span
-              aria-hidden="true"
-              className="inline-block h-1.5 w-1.5 rounded-full bg-white/90"
-            />
-          ) : null}
-        </span>
-      )}
+        )
+      ) : null}
       {showBannerBadge ? (
         <button
           type="button"

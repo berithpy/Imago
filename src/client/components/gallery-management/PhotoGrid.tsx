@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { useLongPress } from "@uidotdev/usehooks";
+import { CopyCheck, Grid2X2, Grid3X3, Info, SquareDashed } from "lucide-react";
 import { ConfirmationModal } from "@/client/components/ConfirmationModal";
 import { ErrorMessage } from "@/client/components/ErrorMessage";
 import { PhotoThumbnail } from "@/client/components/PhotoThumbnail";
@@ -38,15 +39,19 @@ type PhotoTileProps = {
   isBanner: boolean;
   isSelected: boolean;
   isActive: boolean;
+  isCursorActive: boolean;
   isDeleting: boolean;
   settingBanner: boolean;
   showInfo: boolean;
   isTouchDevice: boolean;
+  isMultiSelectMode: boolean;
   onFocus: () => void;
   onActivate: () => void;
   onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => void;
   onSetBanner: () => void;
   onPreview: () => void;
+  onToggleMark: () => void;
+  onLongPressMark: () => void;
 };
 
 const PhotoTile = forwardRef<HTMLDivElement, PhotoTileProps>(function PhotoTile({
@@ -58,44 +63,32 @@ const PhotoTile = forwardRef<HTMLDivElement, PhotoTileProps>(function PhotoTile(
   isBanner,
   isSelected,
   isActive,
+  isCursorActive,
   isDeleting,
   settingBanner,
   showInfo,
   isTouchDevice,
+  isMultiSelectMode,
   onFocus,
   onActivate,
   onKeyDown,
   onSetBanner,
   onPreview,
+  onToggleMark,
+  onLongPressMark,
 }, ref) {
-  const [isPressing, setIsPressing] = useState(false);
-
-  useEffect(() => {
-    if (!isTouchDevice) {
-      setIsPressing(false);
-    }
-  }, [isTouchDevice]);
+  const suppressTapAfterHoldRef = useRef(false);
 
   const longPressAttrs = useLongPress(
     () => {
       if (!isTouchDevice) return;
+      suppressTapAfterHoldRef.current = true;
+      if (isMultiSelectMode) return;
+
+      onLongPressMark();
       if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
         navigator.vibrate(20);
       }
-    },
-    {
-      onStart: () => {
-        if (!isTouchDevice) return;
-        setIsPressing(true);
-      },
-      onCancel: () => {
-        if (!isTouchDevice) return;
-        setIsPressing(false);
-      },
-      onFinish: () => {
-        if (!isTouchDevice) return;
-        setIsPressing(false);
-      },
     }
   );
 
@@ -107,16 +100,27 @@ const PhotoTile = forwardRef<HTMLDivElement, PhotoTileProps>(function PhotoTile(
       aria-selected={isSelected}
       tabIndex={isActive ? 0 : -1}
       onFocus={onFocus}
-      onClick={onActivate}
+      onClick={() => {
+        if (isTouchDevice && suppressTapAfterHoldRef.current) {
+          suppressTapAfterHoldRef.current = false;
+          return;
+        }
+        if (isMultiSelectMode) {
+          onToggleMark();
+          onFocus();
+          return;
+        }
+        onActivate();
+      }}
       onKeyDown={onKeyDown}
       onContextMenu={(event) => {
         if (isTouchDevice) event.preventDefault();
       }}
       {...longPressAttrs}
-      className={`group relative select-none border bg-neutral-900 outline-none transition-colors focus-visible:border-neutral-400 focus-visible:bg-neutral-800 focus-visible:ring-1 focus-visible:ring-neutral-500 ${isListMode ? "p-2.5" : "p-3"} ${isSelected
-        ? "border-amber-400 bg-neutral-800/80"
-        : isActive
-          ? "border-neutral-500 bg-neutral-700/55"
+      className={`group relative select-none border bg-neutral-900 outline-none transition-colors focus-visible:border-amber-400 focus-visible:bg-neutral-800 focus-visible:ring-1 focus-visible:ring-amber-400/70 ${isListMode ? "p-2.5" : "p-3"} ${isCursorActive
+        ? "border-amber-400 bg-amber-400/10"
+        : isSelected
+          ? "border-neutral-200 bg-neutral-700/70"
           : "border-neutral-800 hover:border-neutral-500 hover:bg-neutral-700/45"
         } ${isDeleting ? "opacity-60" : ""}`}
     >
@@ -125,7 +129,16 @@ const PhotoTile = forwardRef<HTMLDivElement, PhotoTileProps>(function PhotoTile(
         alt={photo.original_name}
         fit="cover"
         sharp
-        onClick={onPreview}
+        onClick={(event) => {
+          if (isTouchDevice && suppressTapAfterHoldRef.current) {
+            event.stopPropagation();
+            suppressTapAfterHoldRef.current = false;
+            return;
+          }
+          if (isMultiSelectMode) return;
+
+          onPreview();
+        }}
         index={showInfo ? index + 1 : undefined}
         total={showInfo ? total : undefined}
         marked={showInfo ? isSelected : false}
@@ -136,15 +149,8 @@ const PhotoTile = forwardRef<HTMLDivElement, PhotoTileProps>(function PhotoTile(
         }}
         filename={showInfo ? photo.original_name : undefined}
         size={showInfo ? formatSize(photo.size) : undefined}
+        onIndexClick={showInfo ? onToggleMark : undefined}
       />
-
-      {isTouchDevice ? (
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1 bg-neutral-800/80">
-          <div
-            className={`h-full bg-amber-400 transition-[width] duration-400 ${isPressing ? "w-full" : "w-0"}`}
-          />
-        </div>
-      ) : null}
     </div>
   );
 });
@@ -157,6 +163,7 @@ export function PhotoGrid({
   onGalleryUpdated,
 }: Props) {
   const { apiBase } = useTenant();
+  const controlsRef = useRef<HTMLDivElement | null>(null);
   const gridRef = useRef<HTMLDivElement | null>(null);
   const photoRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [deletingPhotoIds, setDeletingPhotoIds] = useState<string[]>([]);
@@ -171,6 +178,7 @@ export function PhotoGrid({
   const [deleteRequest, setDeleteRequest] = useState<DeleteRequest | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [showInfo, setShowInfo] = useState(true);
+  const [keyboardMode, setKeyboardMode] = useState(false);
   const [isTouchDevice, setIsTouchDevice] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
     return window.matchMedia("(hover: none), (pointer: coarse)").matches;
@@ -214,9 +222,42 @@ export function PhotoGrid({
   const isListMode = viewMode === "list";
   const isSmallGridMode = viewMode === "small-grid";
 
+  function isEditableTarget(target: EventTarget | null) {
+    if (!(target instanceof HTMLElement)) return false;
+    if (target.isContentEditable) return true;
+    return !!target.closest("input, textarea, select, [contenteditable=''], [contenteditable='true'], [role='textbox']");
+  }
+
+  function isInsideDialog(target: EventTarget | null) {
+    if (!(target instanceof HTMLElement)) return false;
+    return !!target.closest("dialog, [role='dialog'], [aria-modal='true']");
+  }
+
+  function ensurePhotoVisible(photoId: string) {
+    const tile = photoRefs.current[photoId];
+    if (!tile) return;
+
+    const tileRect = tile.getBoundingClientRect();
+    const controlsBottom = controlsRef.current?.getBoundingClientRect().bottom ?? 0;
+    const topSafeEdge = controlsBottom + 10;
+    const bottomSafeEdge = window.innerHeight - 8;
+
+    if (tileRect.top < topSafeEdge) {
+      window.scrollBy({ top: tileRect.top - topSafeEdge, behavior: "auto" });
+      return;
+    }
+
+    if (tileRect.bottom > bottomSafeEdge) {
+      window.scrollBy({ top: tileRect.bottom - bottomSafeEdge, behavior: "auto" });
+    }
+  }
+
   function focusPhoto(photoId: string) {
     setActivePhotoId(photoId);
     photoRefs.current[photoId]?.focus();
+    window.requestAnimationFrame(() => {
+      ensurePhotoVisible(photoId);
+    });
   }
 
   function toggleSelection(photoId: string) {
@@ -253,6 +294,56 @@ export function PhotoGrid({
     const nextIndex = Math.min(Math.max(currentIndex + delta, 0), photos.length - 1);
     focusPhoto(photos[nextIndex].id);
   }
+
+  useEffect(() => {
+    // Keep a window-level key handler so arrow navigation can start before any tile is focused.
+    // The tile-level handler remains for focused listbox interactions (selection/star/delete shortcuts).
+    function onWindowKeyDown(event: KeyboardEvent) {
+      if (event.defaultPrevented || photos.length === 0 || deleteRequest) return;
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      if (isEditableTarget(event.target) || isInsideDialog(event.target)) return;
+
+      const currentId = activePhotoId ?? photos[0]?.id;
+      if (!currentId) return;
+
+      const isArrowKey =
+        event.key === "ArrowLeft" ||
+        event.key === "ArrowRight" ||
+        event.key === "ArrowUp" ||
+        event.key === "ArrowDown";
+
+      if (!keyboardMode && isArrowKey) {
+        event.preventDefault();
+        setKeyboardMode(true);
+        focusPhoto(currentId);
+        return;
+      }
+
+      switch (event.key) {
+        case "ArrowLeft":
+          event.preventDefault();
+          moveFocus(currentId, -1);
+          return;
+        case "ArrowRight":
+          event.preventDefault();
+          moveFocus(currentId, 1);
+          return;
+        case "ArrowUp":
+          event.preventDefault();
+          moveFocus(currentId, -getColumnCount());
+          return;
+        case "ArrowDown":
+          event.preventDefault();
+          moveFocus(currentId, getColumnCount());
+          return;
+        default:
+          return;
+      }
+    }
+
+    window.addEventListener("keydown", onWindowKeyDown);
+    return () => window.removeEventListener("keydown", onWindowKeyDown);
+  }, [activePhotoId, deleteRequest, keyboardMode, photos]);
 
   function requestDelete(photoIds: string[]) {
     const items = photos.filter((photo) => photoIds.includes(photo.id));
@@ -344,6 +435,21 @@ export function PhotoGrid({
   function handleTileKeyDown(event: React.KeyboardEvent<HTMLDivElement>, photoId: string) {
     if (event.target !== event.currentTarget) return;
 
+    const isArrowKey =
+      event.key === "ArrowLeft" ||
+      event.key === "ArrowRight" ||
+      event.key === "ArrowUp" ||
+      event.key === "ArrowDown";
+
+    if (!keyboardMode && isArrowKey) {
+      event.preventDefault();
+      setKeyboardMode(true);
+      focusPhoto(photoId);
+      return;
+    }
+
+    setKeyboardMode(true);
+
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
       event.preventDefault();
       selectAll();
@@ -400,7 +506,10 @@ export function PhotoGrid({
 
   return (
     <>
-      <div className="sticky top-2 z-30 mb-4 rounded-lg border border-neutral-800 bg-neutral-900 px-4 py-3">
+      <div
+        ref={controlsRef}
+        className="sticky top-2 z-30 mb-4 rounded-lg border border-neutral-800 bg-neutral-900 px-4 py-3"
+      >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm text-neutral-100">
@@ -414,18 +523,21 @@ export function PhotoGrid({
                   : mode === "list"
                     ? "List"
                     : "Grid";
+                const Icon = mode === "small-grid" ? Grid3X3 : mode === "grid" ? Grid2X2 : null;
                 return (
                   <button
                     key={mode}
                     type="button"
                     onClick={() => setViewMode(mode)}
                     aria-pressed={isActive}
+                    aria-label={label}
+                    title={label}
                     className={`rounded-md px-2.5 py-1.5 text-xs transition-colors ${isActive
                       ? "bg-amber-400 text-neutral-950"
                       : "text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
                       }`}
                   >
-                    {label}
+                    {Icon ? <Icon aria-hidden="true" className="h-4 w-4" /> : label}
                   </button>
                 );
               })}
@@ -433,26 +545,32 @@ export function PhotoGrid({
             <button
               type="button"
               onClick={selectAll}
-              className="rounded-lg border border-neutral-800 px-3 py-1.5 text-xs text-neutral-400"
+              aria-label="Select all"
+              title="Select all"
+              className="inline-flex items-center rounded-lg border border-neutral-800 px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
             >
-              Select all
+              <CopyCheck aria-hidden="true" className="h-4 w-4" />
             </button>
             <button
               type="button"
               onClick={selectNone}
               disabled={selectedCount === 0}
-              className="rounded-lg border border-neutral-800 px-3 py-1.5 text-xs text-neutral-400 disabled:opacity-50"
+              aria-label="Select none"
+              title="Select none"
+              className="inline-flex items-center rounded-lg border border-neutral-800 px-3 py-1.5 text-xs text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-neutral-400"
             >
-              Select none
+              <SquareDashed aria-hidden="true" className="h-4 w-4" />
             </button>
             <button
               type="button"
               onClick={() => setShowInfo((current) => !current)}
+              aria-label={showInfo ? "Hide photo info overlays" : "Show photo info overlays"}
+              aria-pressed={showInfo}
               title={showInfo ? "Hide photo info overlays" : "Show photo info overlays"}
-              className={`px-3 py-1.5 border border-neutral-800 rounded-lg text-xs font-mono whitespace-nowrap transition-colors cursor-pointer ${showInfo ? "bg-neutral-900 text-neutral-100" : "bg-transparent text-neutral-500"
+              className={`inline-flex items-center rounded-lg border border-neutral-800 px-3 py-1.5 text-xs transition-colors cursor-pointer ${showInfo ? "bg-neutral-900 text-neutral-100" : "bg-transparent text-neutral-500 hover:bg-neutral-800 hover:text-neutral-100"
                 }`}
             >
-              {showInfo ? "Info on" : "Info off"}
+              <Info aria-hidden="true" className="h-4 w-4" />
             </button>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -500,6 +618,7 @@ export function PhotoGrid({
           const isBanner = gallery?.banner_photo_id === photo.id;
           const isSelected = selectedSet.has(photo.id);
           const isActive = activePhotoId === photo.id;
+          const isCursorActive = keyboardMode && isActive;
           const isDeleting = deletingSet.has(photo.id);
 
           return (
@@ -516,14 +635,27 @@ export function PhotoGrid({
               isBanner={isBanner}
               isSelected={isSelected}
               isActive={isActive}
+              isCursorActive={isCursorActive}
               isDeleting={isDeleting}
               settingBanner={settingBanner}
               showInfo={showInfo}
               isTouchDevice={isTouchDevice}
-              onFocus={() => setActivePhotoId(photo.id)}
+              isMultiSelectMode={selectedCount > 0}
+              onFocus={() => {
+                setActivePhotoId(photo.id);
+                ensurePhotoVisible(photo.id);
+              }}
               onActivate={() => setActivePhotoId(photo.id)}
               onKeyDown={(event) => handleTileKeyDown(event, photo.id)}
               onSetBanner={() => handleSetBanner(photo.id)}
+              onToggleMark={() => {
+                setActivePhotoId(photo.id);
+                toggleSelection(photo.id);
+              }}
+              onLongPressMark={() => {
+                setActivePhotoId(photo.id);
+                toggleSelection(photo.id);
+              }}
               onPreview={() => {
                 window.open(`/api/images/${photo.r2_key}?variant=full`, "_blank", "noopener,noreferrer");
               }}
